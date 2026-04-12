@@ -1,0 +1,36 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: arise-backend
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 2000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    root: INFO
+    com.arise: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+arise:
+  security:
+    jwt:
+      secret: "z7M/vRtVf+Qo3+fP3U5FvK9nK6gJtFfJzE+TcL+sWw8=" # Replace in prod
+      expiration: 86400000
+    api-key: "arise-local-dev-key"
+  ollama:
+    max-loaded-models: ${OLLAMA_MAX_LOADED_MODELS:2}

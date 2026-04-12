@@ -1,0 +1,60 @@
+# =========================
+# IDEs and OS files
+# =========================
+.vscode/
+.idea/
+.cursor/
+.kiro/
+.DS_Store
+Thumbs.db
+*.swp
+
+# =========================
+# Graphify Artifacts
+# =========================
+.graphify_cached.json
+.graphify_semantic_new.json
+.graphify_uncached.txt
+graphify-out/
+# Note: .graphifyignore and .graphify_python are typically kept in version control,
+# but the cache and output folders are ignored above.
+
+# =========================
+# Java / Spring Boot (Backend)
+# =========================
+target/
+.classpath
+.project
+.settings/
+.factorypath
+portable-maven/
+*.jar
+*.war
+*.class
+*.log
+
+# =========================
+# Python (AI Engine)
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.env
+pip-log.txt
+
+# =========================
+# Flutter / Dart (Frontend)
+# =========================
+.dart_tool/
+build/
+*.iml
+.pub-cache/
+.pub/
+local.properties
+arise_2/android/local.properties
+arise_2/android/key.properties
+arise_2/ios/.symlinks/
+arise_2/ios/Pods/

@@ -1,0 +1,7 @@
+{
+  "deepseek-coder-v2:lite" : "Coding",
+  "qwen2.5:3b-instruct" : "Conversation",
+  "qwen3.5:4b" : "Idle",
+  "phi3:mini" : "Idle",
+  "qwen2.5:7b-instruct" : "Idle"
+}
