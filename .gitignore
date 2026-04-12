@@ -58,3 +58,11 @@ arise_2/android/local.properties
 arise_2/android/key.properties
 arise_2/ios/.symlinks/
 arise_2/ios/Pods/
+
+
+# AI models
+*.onnx
+*.pt
+*.bin
+*.gguf
+models/
