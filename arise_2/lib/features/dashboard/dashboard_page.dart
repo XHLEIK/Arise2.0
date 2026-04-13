@@ -26,6 +26,8 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
+  bool _isAgentLogHidden = false;
+  bool _isSessionsHidden = false;
   WaveState _waveState = WaveState.idle;
   double _currentAmplitude = 0.0;
   bool _isThinking = false;
@@ -99,15 +101,17 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
+    final rightPanelsHidden = _isAgentLogHidden && _isSessionsHidden;
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ── Center Column (65%) — Orb + Chat + Input ──
-          Expanded(flex: 65, child: _buildCenterColumn(context)),
+          // ── Center Column (Flexible) ──
+          Expanded(flex: rightPanelsHidden ? 85 : 65, child: _buildCenterColumn(context)),
           const SizedBox(width: 20),
-          // ── Right Column (35%) — Memory + Feed ──
-          Expanded(flex: 35, child: _buildRightColumn()),
+          // ── Right Column (Flexible handling) ──
+          _buildRightColumn(),
         ],
       ),
     );
@@ -165,10 +169,36 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildRightColumn() {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        MemoryPanel(metricsService: widget.metricsService),
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          clipBehavior: Clip.hardEdge,
+          decoration: const BoxDecoration(),
+          width: _isAgentLogHidden ? 60 : MediaQuery.of(context).size.width * 0.30,
+          child: MemoryPanel(
+            metricsService: widget.metricsService,
+            isHidden: _isAgentLogHidden,
+            onToggle: () => setState(() => _isAgentLogHidden = !_isAgentLogHidden),
+          ),
+        ),
         const SizedBox(height: 16),
-        const Expanded(child: LiveFeedPanel()),
+        Expanded(
+          flex: _isSessionsHidden ? 0 : 1,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            clipBehavior: Clip.hardEdge,
+            decoration: const BoxDecoration(),
+            width: _isSessionsHidden ? 60 : MediaQuery.of(context).size.width * 0.30,
+            constraints: _isSessionsHidden ? const BoxConstraints(minHeight: 60) : null,
+            child: LiveFeedPanel(
+              isHidden: _isSessionsHidden,
+              onToggle: () => setState(() => _isSessionsHidden = !_isSessionsHidden),
+            ),
+          ),
+        ),
       ],
     );
   }

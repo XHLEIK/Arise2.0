@@ -4,6 +4,7 @@
 .vscode/
 .idea/
 .gemini/
+tasks/
 .cursor/
 .kiro/
 .DS_Store
@@ -23,6 +24,7 @@ graphify-out/
 # =========================
 # Java / Spring Boot (Backend)
 # =========================
+SYSTEM_PROMPT.md
 target/
 .classpath
 .project

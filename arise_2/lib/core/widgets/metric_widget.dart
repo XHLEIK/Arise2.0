@@ -91,16 +91,20 @@ class _MetricWidgetState extends State<MetricWidget> {
               children: [
                 Icon(widget.icon, size: 12, color: color),
                 const SizedBox(width: 4),
-                Text(
-                  widget.label.toUpperCase(),
-                  style: GoogleFonts.rajdhani(
-                    color: Colors.white.withValues(alpha: 0.8),
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1.0,
+                Expanded(
+                  child: Text(
+                    widget.label.toUpperCase(),
+                    style: GoogleFonts.rajdhani(
+                      color: Colors.white.withValues(alpha: 0.8),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1.0,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                const Spacer(),
+                const SizedBox(width: 4),
                 // Micro glowing status indicator
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 500),
@@ -126,12 +130,16 @@ class _MetricWidgetState extends State<MetricWidget> {
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
               children: [
-                Text(
-                  '${widget.value.toInt()}',
-                  style: GoogleFonts.orbitron(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                Flexible(
+                  child: Text(
+                    '${widget.value.toInt()}',
+                    style: GoogleFonts.orbitron(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 const SizedBox(width: 2),
@@ -142,6 +150,8 @@ class _MetricWidgetState extends State<MetricWidget> {
                     fontSize: 10,
                     fontWeight: FontWeight.w500,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -155,6 +165,8 @@ class _MetricWidgetState extends State<MetricWidget> {
                     color: Colors.white.withValues(alpha: 0.5),
                     fontSize: 9,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               )
             else

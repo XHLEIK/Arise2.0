@@ -5,6 +5,7 @@ import '../../../core/services/chat_service.dart';
 import '../../../core/services/model_service.dart';
 import '../../../core/services/live_feed_service.dart';
 import '../../../core/services/device_service.dart';
+import '../../../core/widgets/model_selector.dart';
 
 class CommandInputBar extends StatefulWidget {
   const CommandInputBar({super.key});
@@ -181,6 +182,8 @@ class _CommandInputBarState extends State<CommandInputBar> {
                       );
                     },
                   ),
+                  const Spacer(),
+                  ModelSelector(service: modelService),
                 ],
               ),
             ),

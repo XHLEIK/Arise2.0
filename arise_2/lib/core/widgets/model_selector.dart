@@ -59,7 +59,9 @@ class _ModelSelectorState extends State<ModelSelector> {
             width: 260,
             child: CompositedTransformFollower(
               link: _layerLink,
-              offset: const Offset(0, 42),
+              targetAnchor: Alignment.topLeft,
+              followerAnchor: Alignment.bottomLeft,
+              offset: const Offset(0, -8),
               showWhenUnlinked: false,
               child: Material(
                 color: Colors.transparent,

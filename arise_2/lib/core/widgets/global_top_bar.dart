@@ -3,7 +3,7 @@ import '../theme/arise_colors.dart';
 import '../services/system_metrics_service.dart';
 import '../services/model_service.dart';
 import '../services/weather_service.dart';
-import 'model_selector.dart';
+
 import 'weather_clock_widget.dart';
 
 /// Global top system bar across the entire application.
@@ -83,11 +83,7 @@ class GlobalTopBar extends StatelessWidget {
   Widget _buildRightSection(BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
-      children: [
-        ModelSelector(service: modelService),
-        const SizedBox(width: 10),
-        WeatherClockWidget(service: weatherService),
-      ],
+      children: [WeatherClockWidget(service: weatherService)],
     );
   }
 }

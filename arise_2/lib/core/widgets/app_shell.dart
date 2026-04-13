@@ -16,6 +16,7 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
+  bool _isSidebarCollapsed = false;
   int _selectedIndex = 0;
 
   // Services — owned by the shell so they persist across page changes
@@ -48,6 +49,10 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final shouldAutoCollapse = screenWidth < 900;
+    final effectiveCollapsed = _isSidebarCollapsed || shouldAutoCollapse;
+
     return Scaffold(
       backgroundColor: AriseColors.background,
       body: Column(
@@ -77,7 +82,7 @@ class _AppShellState extends State<AppShell> {
           Expanded(
             child: Row(
               children: [
-                _buildSidebar(),
+                _buildSidebar(effectiveCollapsed),
                 // Vertical separator glow line
                 Container(
                   width: 1,
@@ -103,19 +108,35 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  Widget _buildSidebar() {
-    return Container(
-      width: 220,
-      color: AriseColors.surfaceContainerLow,
+  Widget _buildSidebar(bool collapsed) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      clipBehavior: Clip.hardEdge,
+      decoration: const BoxDecoration(
+        color: AriseColors.surfaceContainerLow,
+      ),
+      width: collapsed ? 72 : 220,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 8),
+          // Collapse Toggle
+          if (MediaQuery.of(context).size.width >= 900)
+            Align(
+              alignment: collapsed ? Alignment.center : Alignment.centerRight,
+              child: IconButton(
+                icon: Icon(collapsed ? Icons.chevron_right_rounded : Icons.chevron_left_rounded),
+                color: AriseColors.onSurfaceVariant,
+                onPressed: () => setState(() => _isSidebarCollapsed = !collapsed),
+              ),
+            ),
           // Nav Items
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               itemCount: _navItems.length,
-              itemBuilder: (context, index) => _buildNavItem(index),
+              itemBuilder: (context, index) => _buildNavItem(index, collapsed),
             ),
           ),
           // Logout
@@ -123,6 +144,7 @@ class _AppShellState extends State<AppShell> {
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
             child: _buildNavItem(
               -1,
+              collapsed,
               item: const _NavItem(
                 icon: Icons.logout_rounded,
                 label: 'Log Out',
@@ -135,7 +157,7 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  Widget _buildNavItem(int index, {_NavItem? item, bool isLogout = false}) {
+  Widget _buildNavItem(int index, bool collapsed, {_NavItem? item, bool isLogout = false}) {
     final navItem = item ?? _navItems[index];
     final isSelected = !isLogout && index == _selectedIndex;
 
@@ -154,7 +176,7 @@ class _AppShellState extends State<AppShell> {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOut,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: EdgeInsets.symmetric(horizontal: collapsed ? 8 : 16, vertical: 12),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               color: isSelected
@@ -170,6 +192,7 @@ class _AppShellState extends State<AppShell> {
                   : null,
             ),
             child: Row(
+              mainAxisAlignment: collapsed ? MainAxisAlignment.center : MainAxisAlignment.start,
               children: [
                 Icon(
                   navItem.icon,
@@ -180,20 +203,25 @@ class _AppShellState extends State<AppShell> {
                       ? AriseColors.error
                       : AriseColors.onSurfaceVariant,
                 ),
-                const SizedBox(width: 14),
-                Text(
-                  navItem.label,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: isSelected
-                        ? AriseColors.primary
-                        : isLogout
-                        ? AriseColors.error
-                        : AriseColors.onSurfaceVariant,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                if (!collapsed) ...[
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      navItem.label,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: isSelected
+                            ? AriseColors.primary
+                            : isLogout
+                            ? AriseColors.error
+                            : AriseColors.onSurfaceVariant,
+                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                      ),
+                    ),
                   ),
-                ),
-                if (isSelected) ...[
-                  const Spacer(),
+                ],
+                if (isSelected && !collapsed) ...[
+                  // const Spacer(),
                   Container(
                     width: 6,
                     height: 6,
