@@ -3,17 +3,19 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/arise_colors.dart';
 import '../../../core/widgets/glass_container.dart';
 import '../../../core/widgets/ai_pulse.dart';
+import '../../../core/services/system_metrics_service.dart';
+import '../../../core/widgets/metric_widget.dart';
 
-/// Memory Sectors panel — circular progress indicators, status lines,
-/// and the AI pulse breathing animation.
+/// System Matrix panel — displaying critical system stats in real-time.
 class MemoryPanel extends StatelessWidget {
-  const MemoryPanel({super.key});
+  final SystemMetricsService metricsService;
+  const MemoryPanel({super.key, required this.metricsService});
 
   @override
   Widget build(BuildContext context) {
     return GlassContainer(
       backgroundColor: AriseColors.surfaceContainerLow.withValues(alpha: 0.8),
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(10),
       borderRadius: 16,
       blurAmount: 10,
       child: Column(
@@ -24,59 +26,90 @@ class MemoryPanel extends StatelessWidget {
             children: [
               Icon(
                 Icons.memory_rounded,
-                size: 18,
+                size: 14,
                 color: AriseColors.secondary,
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 6),
               Text(
-                'MEMORY_SECTORS',
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                'SYSTEM_MATRIX',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
                   color: AriseColors.secondary,
                   letterSpacing: 2.0,
+                  fontSize: 10,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 8),
 
-          // Memory rings row
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _MemoryRing(
-                label: 'SHORT-TERM',
-                value: 0.62,
-                color: AriseColors.primaryContainer,
-                sizeLabel: '1.2 GB',
-              ),
-              _MemoryRing(
-                label: 'SEMANTIC',
-                value: 0.84,
-                color: AriseColors.secondary,
-                sizeLabel: '3.4 GB',
-              ),
-              _MemoryRing(
-                label: 'STRUCTURED',
-                value: 0.35,
-                color: AriseColors.tertiary,
-                sizeLabel: '840 MB',
-              ),
-            ],
+          // Memory sectors with live system metrics rebuilt using GridView/Wrap
+          StreamBuilder<SystemMetrics>(
+            stream: metricsService.metrics,
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final m = snapshot.data!;
+              return GridView.count(
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                childAspectRatio: 2.1,
+                children: [
+                  MetricWidget(
+                    icon: Icons.speed_rounded,
+                    label: 'CPU',
+                    value: m.cpuUsage,
+                    unit: '%',
+                    secondaryValue: m.cpuTemp,
+                    secondaryUnit: '°C',
+                    history: metricsService.currentCpuHistory,
+                  ),
+                  MetricWidget(
+                    icon: Icons.memory_rounded,
+                    label: 'GPU',
+                    value: m.gpuUsage,
+                    unit: '%',
+                    secondaryValue: m.gpuTemp,
+                    secondaryUnit: '°C',
+                    history: metricsService.currentGpuHistory,
+                  ),
+                  MetricWidget(
+                    icon: Icons.developer_board_rounded,
+                    label: 'RAM',
+                    value: m.ramUsage,
+                    unit: '%',
+                    history: metricsService.currentRamHistory,
+                  ),
+                  MetricWidget(
+                    icon: Icons.storage_rounded,
+                    label: 'DISK',
+                    value: m.storageUsage,
+                    unit: '%',
+                    history: metricsService.currentStorageHistory,
+                    warningThreshold: 85,
+                    criticalThreshold: 95,
+                  ),
+                ],
+              );
+            }
           ),
 
-          const SizedBox(height: 28),
+          const SizedBox(height: 10),
 
           // Status area with AI pulse
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: AriseColors.surfaceContainer,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(10),
             ),
             child: Row(
               children: [
-                const AiPulse(size: 38),
-                const SizedBox(width: 16),
+                const AiPulse(size: 28),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -85,14 +118,16 @@ class MemoryPanel extends StatelessWidget {
                         'PRIMARY_CORE_ONLINE',
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           color: AriseColors.primaryContainer,
-                          letterSpacing: 1.5,
+                          letterSpacing: 1.2,
+                          fontSize: 9,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 2),
                       Text(
                         'Executing Task...',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: AriseColors.onSurfaceVariant,
+                          fontSize: 10,
                         ),
                       ),
                     ],
@@ -107,163 +142,6 @@ class MemoryPanel extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Animated circular progress ring with center label.
-class _MemoryRing extends StatefulWidget {
-  const _MemoryRing({
-    required this.label,
-    required this.value,
-    required this.color,
-    required this.sizeLabel,
-  });
-
-  final String label;
-  final double value;
-  final Color color;
-  final String sizeLabel;
-
-  @override
-  State<_MemoryRing> createState() => _MemoryRingState();
-}
-
-class _MemoryRingState extends State<_MemoryRing>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _progressAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 1200),
-      vsync: this,
-    );
-    _progressAnimation = Tween<double>(
-      begin: 0,
-      end: widget.value,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
-    _controller.forward();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        AnimatedBuilder(
-          animation: _progressAnimation,
-          builder: (context, child) {
-            return SizedBox(
-              width: 72,
-              height: 72,
-              child: CustomPaint(
-                painter: _RingPainter(
-                  progress: _progressAnimation.value,
-                  color: widget.color,
-                  trackColor: AriseColors.surfaceContainerHighest,
-                ),
-                child: Center(
-                  child: Text(
-                    '${(_progressAnimation.value * 100).toInt()}%',
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: widget.color,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-        const SizedBox(height: 10),
-        Text(
-          widget.label,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: AriseColors.onSurfaceVariant,
-            fontSize: 9,
-            letterSpacing: 1.2,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          widget.sizeLabel,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: widget.color.withValues(alpha: 0.7),
-            fontSize: 11,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _RingPainter extends CustomPainter {
-  _RingPainter({
-    required this.progress,
-    required this.color,
-    required this.trackColor,
-  });
-
-  final double progress;
-  final Color color;
-  final Color trackColor;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2 - 5;
-    const strokeWidth = 5.0;
-
-    // Track
-    final trackPaint = Paint()
-      ..color = trackColor
-      ..strokeWidth = strokeWidth
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
-    canvas.drawCircle(center, radius, trackPaint);
-
-    // Progress arc
-    final progressPaint = Paint()
-      ..color = color
-      ..strokeWidth = strokeWidth
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: radius),
-      -pi / 2,
-      2 * pi * progress,
-      false,
-      progressPaint,
-    );
-
-    // Glow arc
-    final glowPaint = Paint()
-      ..color = color.withValues(alpha: 0.2)
-      ..strokeWidth = strokeWidth + 6
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
-
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: radius),
-      -pi / 2,
-      2 * pi * progress,
-      false,
-      glowPaint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_RingPainter oldDelegate) =>
-      oldDelegate.progress != progress;
 }
 
 /// Three dots that pulse sequentially for a heartbeat effect.

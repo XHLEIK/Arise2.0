@@ -27,9 +27,9 @@ def _handle_voice_commands(event):
         voice_manager.stop()
     elif etype == "tts_play":
         data = event.get("data", {})
-        text = data.get("text", "")
+        text = data if isinstance(data, str) else data.get("text", "")
         if text:
-            voice_manager.play_tts(text)
+            voice_manager.play_tts(text, is_final=True)
     elif etype == "mute_tts":
         data = event.get("data", "false")
         if isinstance(data, dict):

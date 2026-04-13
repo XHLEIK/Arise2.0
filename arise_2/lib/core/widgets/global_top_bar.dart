@@ -3,7 +3,6 @@ import '../theme/arise_colors.dart';
 import '../services/system_metrics_service.dart';
 import '../services/model_service.dart';
 import '../services/weather_service.dart';
-import 'metric_widget.dart';
 import 'model_selector.dart';
 import 'weather_clock_widget.dart';
 
@@ -40,10 +39,7 @@ class GlobalTopBar extends StatelessWidget {
         children: [
           // ── Left: Title ──
           _buildTitle(context),
-          const SizedBox(width: 32),
-          // ── Center: Metrics ──
-          Expanded(child: _buildMetrics(context)),
-          const SizedBox(width: 16),
+          const Spacer(),
           // ── Right: Model + Weather + Clock ──
           _buildRightSection(context),
         ],
@@ -81,62 +77,6 @@ class GlobalTopBar extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildMetrics(BuildContext context) {
-    return StreamBuilder<SystemMetrics>(
-      stream: metricsService.metrics,
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) return const SizedBox.shrink();
-        final m = snapshot.data!;
-
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              MetricWidget(
-                icon: Icons.speed_rounded,
-                label: 'CPU',
-                value: m.cpuUsage,
-                unit: '%',
-                secondaryValue: m.cpuTemp,
-                secondaryUnit: '°C',
-                history: metricsService.currentCpuHistory,
-              ),
-              const SizedBox(width: 8),
-              MetricWidget(
-                icon: Icons.memory_rounded,
-                label: 'GPU',
-                value: m.gpuUsage,
-                unit: '%',
-                secondaryValue: m.gpuTemp,
-                secondaryUnit: '°C',
-                history: metricsService.currentGpuHistory,
-              ),
-              const SizedBox(width: 8),
-              MetricWidget(
-                icon: Icons.developer_board_rounded,
-                label: 'RAM',
-                value: m.ramUsage,
-                unit: '%',
-                history: metricsService.currentRamHistory,
-              ),
-              const SizedBox(width: 8),
-              MetricWidget(
-                icon: Icons.storage_rounded,
-                label: 'DISK',
-                value: m.storageUsage,
-                unit: '%',
-                history: metricsService.currentStorageHistory,
-                warningThreshold: 85,
-                criticalThreshold: 95,
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 

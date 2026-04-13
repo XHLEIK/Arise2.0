@@ -221,7 +221,7 @@ class _AppShellState extends State<AppShell> {
 
   Widget _buildContent() {
     if (_selectedIndex == 0) {
-      return const DashboardPage();
+      return DashboardPage(metricsService: _metricsService);
     }
     return Center(
       child: Column(

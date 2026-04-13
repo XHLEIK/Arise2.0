@@ -14,54 +14,62 @@ class WeatherClockWidget extends StatelessWidget {
     return StreamBuilder<WeatherData>(
       stream: service.weatherStream,
       builder: (context, snapshot) {
-        final weather = snapshot.data;
+        final weather = snapshot.data ?? WeatherData.zero();
         final now = DateTime.now();
         final dateStr = DateFormat('dd MMM').format(now);
         // Fallback or override local time if weather object isn't active
-        final timeStr = weather?.localTime ?? DateFormat('hh:mm').format(now);
+        final timeStr = weather.city == 'Connecting...'
+            ? DateFormat('hh:mm').format(now)
+            : weather.localTime;
+
+        IconData weatherIcon = Icons.wb_sunny_rounded;
+        String cond = weather.condition.toLowerCase();
+        if (cond.contains('cloud') || cond.contains('overcast')) {
+          weatherIcon = Icons.cloud_rounded;
+        } else if (cond.contains('rain') || cond.contains('drizzle')) {
+          weatherIcon = Icons.water_drop_rounded;
+        } else if (cond.contains('snow') || cond.contains('ice')) {
+          weatherIcon = Icons.ac_unit_rounded;
+        } else if (cond.contains('thunder') || cond.contains('storm')) {
+          weatherIcon = Icons.thunderstorm_rounded;
+        }
 
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             // Weather capsule
-            if (weather != null)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: AriseColors.surfaceContainerHigh.withValues(
-                    alpha: 0.6,
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: AriseColors.outlineVariant.withValues(alpha: 0.1),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.cloud_rounded,
-                      size: 13,
-                      color: AriseColors.onSurfaceVariant,
-                    ),
-                    const SizedBox(width: 5),
-                    Text(
-                      weather.city == 'Connecting...'
-                          ? '--°C'
-                          : '${weather.temperature.toInt()}°C',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: AriseColors.onSurfaceVariant,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: AriseColors.surfaceContainerHigh.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: AriseColors.outlineVariant.withValues(alpha: 0.1),
                 ),
               ),
-            if (weather != null) const SizedBox(width: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    weatherIcon,
+                    size: 13,
+                    color: AriseColors.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    weather.city == 'Connecting...'
+                        ? '--°C'
+                        : '${weather.city}, ${weather.temperature.toInt()}°C',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: AriseColors.onSurfaceVariant,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
             // Date + time
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),

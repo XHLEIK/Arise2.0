@@ -3,6 +3,7 @@
 # =========================
 .vscode/
 .idea/
+.gemini/
 .cursor/
 .kiro/
 .DS_Store
@@ -58,6 +59,8 @@ arise_2/android/local.properties
 arise_2/android/key.properties
 arise_2/ios/.symlinks/
 arise_2/ios/Pods/
+GEMINI.md
+
 
 
 # AI models

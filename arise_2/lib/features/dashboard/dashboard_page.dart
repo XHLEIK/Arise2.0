@@ -10,12 +10,16 @@ import 'widgets/prompt_chips.dart';
 import 'widgets/memory_panel.dart';
 import 'widgets/live_feed_panel.dart';
 
+import '../../core/services/system_metrics_service.dart';
+
 /// Jarvis-style AI Command Center dashboard.
 /// The top bar is now global (in AppShell), so this page only has:
 /// Center: Orb + status + chat + chips + input
 /// Right: Memory sectors + live event feed
 class DashboardPage extends StatefulWidget {
-  const DashboardPage({super.key});
+  final SystemMetricsService metricsService;
+  
+  const DashboardPage({super.key, required this.metricsService});
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -160,11 +164,11 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildRightColumn() {
-    return const Column(
+    return Column(
       children: [
-        MemoryPanel(),
-        SizedBox(height: 16),
-        Expanded(child: LiveFeedPanel()),
+        MemoryPanel(metricsService: widget.metricsService),
+        const SizedBox(height: 16),
+        const Expanded(child: LiveFeedPanel()),
       ],
     );
   }

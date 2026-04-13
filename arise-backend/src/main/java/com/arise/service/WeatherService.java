@@ -21,52 +21,37 @@ public class WeatherService {
         Map<String, Object> location = locationService.getCurrentLocation();
         double lat = (double) location.get("latitude");
         double lon = (double) location.get("longitude");
-        String city = location.containsKey("city") ? (String) location.get("city") : "Local";
-
+        
         try {
             String url = String.format(
-                    "https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s&current=temperature_2m,weather_code",
+                    "http://api.weatherapi.com/v1/current.json?key=727217ed2126409a9a2165652261304&q=%s,%s&aqi=no",
                     lat, lon);
             @SuppressWarnings("unchecked")
             Map<String, Object> response = restTemplate.getForObject(java.util.Objects.requireNonNull(url), Map.class);
             if (response != null && response.containsKey("current")) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> current = (Map<String, Object>) response.get("current");
+                @SuppressWarnings("unchecked")
+                Map<String, Object> loc = (Map<String, Object>) response.get("location");
+                @SuppressWarnings("unchecked")
+                Map<String, Object> cond = (Map<String, Object>) current.get("condition");
+                
+                String fetchedCity = loc.containsKey("name") ? (String) loc.get("name") : "Unknown";
+                
                 return Map.of(
-                        "temperature", current.get("temperature_2m"),
-                        "condition", getWeatherCondition((Integer) current.get("weather_code")),
-                        "city", city);
+                        "temperature", current.get("temp_c"),
+                        "condition", cond.get("text"),
+                        "city", fetchedCity);
             }
         } catch (Exception e) {
-            log.error("Failed to fetch weather from Open-Meteo: {}", e.getMessage());
+            log.error("Failed to fetch weather from WeatherAPI: {}", e.getMessage());
         }
 
         // Fallback placeholder
+        String city = location.containsKey("city") ? (String) location.get("city") : "Local";
         return Map.of(
                 "temperature", 25.0,
                 "condition", "Unknown",
                 "city", city);
-    }
-
-    private String getWeatherCondition(Integer code) {
-        if (code == null)
-            return "Unknown";
-        if (code == 0)
-            return "Clear";
-        if (code <= 3)
-            return "Cloudy";
-        if (code <= 49)
-            return "Foggy";
-        if (code <= 59)
-            return "Drizzle";
-        if (code <= 69)
-            return "Rain";
-        if (code <= 79)
-            return "Snow";
-        if (code <= 84)
-            return "Showers";
-        if (code <= 94)
-            return "Snow";
-        return "Storm";
     }
 }

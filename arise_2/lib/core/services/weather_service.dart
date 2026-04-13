@@ -60,7 +60,7 @@ class WeatherService {
     try {
       final response = await http
           .get(Uri.parse('$_baseUrl/weather'))
-          .timeout(const Duration(seconds: 5));
+          .timeout(const Duration(seconds: 10));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         _lastKnownWeather = WeatherData(
@@ -72,7 +72,7 @@ class WeatherService {
         _weatherController.add(_lastKnownWeather);
       }
     } catch (e) {
-      // Retain last known weather if possible, but keep ticking the clock
+      // Retain last known weather if possible
     }
   }
 
