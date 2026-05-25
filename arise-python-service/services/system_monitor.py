@@ -1,5 +1,7 @@
 import json
 import asyncio
+import math
+import os
 import psutil
 import structlog
 import redis.asyncio as aioredis
@@ -28,7 +30,11 @@ class SystemMetrics(BaseModel):
 class SystemMonitor:
     def __init__(self):
         self.running = False
-        self.redis = aioredis.from_url("redis://localhost:6379", decode_responses=True)
+        redis_host = os.environ.get("REDIS_HOST", "localhost")
+        redis_port = os.environ.get("REDIS_PORT", "6379")
+        redis_password = os.environ.get("REDIS_PASSWORD", None)
+        redis_url = f"redis://{redis_host}:{redis_port}"
+        self.redis = aioredis.from_url(redis_url, password=redis_password, decode_responses=True)
         self.nvml_initialized = NVML_AVAILABLE
 
     def _get_cpu_temp(self) -> float:
@@ -57,7 +63,7 @@ class SystemMonitor:
             temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
             return (float(util.gpu), float(temp))
         except Exception as e:
-            logger.warning(f"Failed to read NVML GPU metrics: {e}")
+            logger.warning("Failed to read NVML GPU metrics", error=str(e))
             return (0.0, 40.0)
 
     async def start_monitoring(self):
@@ -79,13 +85,17 @@ class SystemMonitor:
                 # Storage (Active drive or C:)
                 disk = psutil.disk_usage('/')
                 
+                def _safe(val):
+                    v = float(val)
+                    return v if math.isfinite(v) else 0.0
+
                 metrics = SystemMetrics(
-                    cpuUsage=cpu_usage,
-                    cpuTemp=cpu_temp,
-                    gpuUsage=gpu_usage,
-                    gpuTemp=gpu_temp,
-                    ramUsage=ram.percent,
-                    storageUsage=disk.percent,
+                    cpuUsage=_safe(cpu_usage),
+                    cpuTemp=_safe(cpu_temp),
+                    gpuUsage=_safe(gpu_usage),
+                    gpuTemp=_safe(gpu_temp),
+                    ramUsage=_safe(ram.percent),
+                    storageUsage=_safe(disk.percent),
                     timestamp=datetime.now().isoformat()
                 )
 
@@ -94,7 +104,7 @@ class SystemMonitor:
                 await self.redis.setex("system-metrics-live", 5, metrics.model_dump_json())
                 
             except Exception as e:
-                logger.error(f"Error collecting metrics: {e}")
+                logger.error("Error collecting metrics", error=str(e))
                 
             await asyncio.sleep(1) # Collect every 1 second
 

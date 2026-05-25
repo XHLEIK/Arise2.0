@@ -1,6 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+
+import '../config/app_config.dart';
+import 'api_client.dart';
 
 class FeedEntry {
   final String message;
@@ -15,7 +20,7 @@ class FeedEntry {
 }
 
 class LiveFeedService {
-  final String _baseUrl = 'http://localhost:8081/api/events';
+  final String _baseUrl = '${AppConfig.springBaseUrl}/api/events';
   final List<FeedEntry> _entries = [];
   final _controller = StreamController<List<FeedEntry>>.broadcast();
   final _statusController = StreamController<String>.broadcast();
@@ -26,6 +31,11 @@ class LiveFeedService {
   final _voiceStateController = StreamController<String>.broadcast();
 
   String currentStatus = 'Ready ✓';
+
+  // Reconnection state
+  http.Client? _client;
+  int _retryCount = 0;
+  static const int _maxRetries = 30;
 
   Stream<List<FeedEntry>> get entries => _controller.stream;
   Stream<String> get modelStatus => _statusController.stream;
@@ -38,11 +48,19 @@ class LiveFeedService {
   }
 
   void _connectToEventStream() async {
+    // Close previous client to prevent resource leak
+    _client?.close();
+    _client = http.Client();
+
     try {
       final request = http.Request('GET', Uri.parse('$_baseUrl/stream'))
-        ..headers['Accept'] = 'text/event-stream';
+        ..headers['Accept'] = 'text/event-stream'
+        ..headers['X-API-KEY'] = AppConfig.apiKey;
 
-      final response = await http.Client().send(request);
+      final response = await _client!.send(request);
+
+      // Reset retry count on successful connection
+      _retryCount = 0;
 
       response.stream
           .transform(utf8.decoder)
@@ -78,7 +96,9 @@ class LiveFeedService {
                         // Triggers state machine transitions: VOICE_MODE_ON, LISTENING, AI_THINKING, TTS_START
                         _voiceStateController.add(vType);
                       }
-                    } catch (_) {}
+                    } catch (e) {
+                      debugPrint('[LiveFeedService] voice event parse error: $e');
+                    }
                   } else {
                     // Core Telemetry Logging
                     _entries.insert(
@@ -103,24 +123,37 @@ class LiveFeedService {
 
                     _controller.add(List.from(_entries));
                   }
-                } catch (_) {}
+                } catch (e) {
+                  debugPrint('[LiveFeedService] SSE parse error: $e');
+                }
               }
             },
-            onDone: () => Future.delayed(
-              const Duration(seconds: 3),
-              _connectToEventStream,
-            ),
-            onError: (_) => Future.delayed(
-              const Duration(seconds: 3),
-              _connectToEventStream,
-            ),
+            onDone: () => _reconnectWithBackoff(),
+            onError: (e) {
+              debugPrint('[LiveFeedService] SSE stream error: $e');
+              _reconnectWithBackoff();
+            },
           );
-    } catch (_) {
-      Future.delayed(const Duration(seconds: 3), _connectToEventStream);
+    } catch (e) {
+      debugPrint('[LiveFeedService] SSE connection error: $e');
+      _reconnectWithBackoff();
     }
   }
 
+  void _reconnectWithBackoff() {
+    if (_retryCount >= _maxRetries) {
+      debugPrint('[LiveFeedService] Max retries reached ($_maxRetries). Stopping reconnection.');
+      return;
+    }
+    final delaySeconds = min(3 * pow(2, _retryCount).toInt(), 60);
+    _retryCount++;
+    debugPrint('[LiveFeedService] Reconnecting in ${delaySeconds}s (attempt $_retryCount)');
+    Future.delayed(Duration(seconds: delaySeconds), _connectToEventStream);
+  }
+
   void dispose() {
+    _client?.close();
+    _client = null;
     _controller.close();
     _statusController.close();
     _amplitudeController.close();

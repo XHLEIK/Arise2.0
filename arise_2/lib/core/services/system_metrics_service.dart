@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+import '../config/app_config.dart';
+import 'api_client.dart';
+
 class SystemMetrics {
   final double cpuUsage;
   final double cpuTemp;
@@ -44,7 +47,7 @@ class SystemMetrics {
 }
 
 class SystemMetricsService {
-  final String _baseUrl = 'http://localhost:8081/api/system';
+  final String _baseUrl = '${AppConfig.springBaseUrl}/api/system';
 
   // Keep 20 data points for the sparkline history
   final int _maxHistory = 20;
@@ -71,6 +74,7 @@ class SystemMetricsService {
   List<double> get currentStorageHistory => [];
 
   void startPolling() {
+    if (_pollingTimer != null) return; // Guard against duplicate polling
     // Initial fetch
     _fetchMetrics();
     // Poll every 2 seconds matching the backend NVML loop
@@ -81,13 +85,14 @@ class SystemMetricsService {
 
   void stopPolling() {
     _pollingTimer?.cancel();
+    _pollingTimer = null;
   }
 
   Future<void> _fetchMetrics() async {
     try {
       final response = await http
-          .get(Uri.parse('$_baseUrl/metrics'))
-          .timeout(const Duration(seconds: 2));
+          .get(Uri.parse('${AppConfig.pythonBaseUrl}/metrics'), headers: ApiClient.baseHeaders)
+          .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);

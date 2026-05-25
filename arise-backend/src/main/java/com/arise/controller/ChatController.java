@@ -3,8 +3,8 @@ package com.arise.controller;
 import com.arise.service.ModelConfigService;
 import com.arise.service.AiRouterService;
 import com.arise.service.EventService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -15,15 +15,28 @@ import java.util.Map;
 @Slf4j
 @RestController
 @RequestMapping("/api/ai")
-@RequiredArgsConstructor
 public class ChatController {
 
     private final ModelConfigService modelConfigService;
     private final AiRouterService aiRouterService;
     private final EventService eventService;
-    private final WebClient webClient = WebClient.builder().baseUrl("http://localhost:11434/api").build();
+    private final WebClient webClient;
 
     private String lastUsedChatModel = "";
+
+    private static final int MAX_MESSAGE_LENGTH = 50_000;
+    private static final int MAX_TTS_LENGTH = 5_000;
+
+    public ChatController(
+            ModelConfigService modelConfigService,
+            AiRouterService aiRouterService,
+            EventService eventService,
+            @Qualifier("ollamaWebClient") WebClient webClient) {
+        this.modelConfigService = modelConfigService;
+        this.aiRouterService = aiRouterService;
+        this.eventService = eventService;
+        this.webClient = webClient;
+    }
 
     /**
      * Streams a chat response from Ollama.
@@ -42,8 +55,18 @@ public class ChatController {
             eventService.publishEvent("voice_commands", "mute_tts", "false");
         }
 
-        if (message == null || model == null) {
+        if (message == null || message.isBlank() || model == null || model.isBlank()) {
             return Flux.just("{\"error\": \"Message and model required\"}");
+        }
+
+        // Input length validation
+        if (message.length() > MAX_MESSAGE_LENGTH) {
+            return Flux.just("{\"error\": \"Message exceeds maximum length (" + MAX_MESSAGE_LENGTH + " chars)\"}");
+        }
+
+        // Sanitize model name — only allow safe characters
+        if (!model.matches("^[a-zA-Z0-9._:/-]+$")) {
+            return Flux.just("{\"error\": \"Invalid model name\"}");
         }
 
         if (!model.equals(lastUsedChatModel)) {
@@ -59,8 +82,6 @@ public class ChatController {
         String role = modelConfigService.getModelRole(model);
         if ("Coding".equalsIgnoreCase(role) && intent != AiRouterService.Intent.CODING) {
             log.warn("Attempted to chat with a 'Coding' assigned role: {}", model);
-            // We allow it, but we log a warning for now since the user manually selected
-            // it.
         }
 
         log.info("Initiating streaming chat with model {} role: {}", model, role);
@@ -93,7 +114,7 @@ public class ChatController {
                 })
                 .onErrorResume(e -> {
                     log.error("Error during chat stream: {}", e.getMessage());
-                    return Flux.just("{\"error\": \"" + e.getMessage() + "\"}");
+                    return Flux.just("{\"error\": \"An internal error occurred. Please try again.\"}");
                 });
     }
 
@@ -106,7 +127,7 @@ public class ChatController {
     @PostMapping(value = "/voice/tts", produces = MediaType.APPLICATION_JSON_VALUE)
     public Map<String, String> playTts(@RequestBody Map<String, String> request) {
         String text = request.get("text");
-        if (text != null && !text.isEmpty()) {
+        if (text != null && !text.isBlank() && text.length() <= MAX_TTS_LENGTH) {
             eventService.publishEvent("voice_commands", "tts_play", text);
         }
         return Map.of("status", "tts_queued");

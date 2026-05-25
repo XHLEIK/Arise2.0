@@ -36,6 +36,7 @@ class _DashboardPageState extends State<DashboardPage> {
   StreamSubscription? _ampSub;
   StreamSubscription? _stateSub;
   StreamSubscription? _transcriptSub;
+  StreamSubscription? _modelStatusSub;
 
   bool _hasGreeted = false;
 
@@ -43,7 +44,7 @@ class _DashboardPageState extends State<DashboardPage> {
   void initState() {
     super.initState();
 
-    liveFeedService.modelStatus.listen((status) {
+    _modelStatusSub = liveFeedService.modelStatus.listen((status) {
       if (mounted && status == 'Ready ✓' && !_hasGreeted) {
         _hasGreeted = true;
         chatService.generateGreeting();
@@ -87,12 +88,16 @@ class _DashboardPageState extends State<DashboardPage> {
     });
 
     _transcriptSub = liveFeedService.transcriptStream.listen((text) {
-      chatService.sendMessage(text);
+      final sanitized = text.trim();
+      if (sanitized.isNotEmpty && sanitized.length <= 10000) {
+        chatService.sendMessage(sanitized);
+      }
     });
   }
 
   @override
   void dispose() {
+    _modelStatusSub?.cancel();
     _ampSub?.cancel();
     _stateSub?.cancel();
     _transcriptSub?.cancel();

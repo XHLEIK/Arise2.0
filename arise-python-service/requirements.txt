@@ -1,15 +1,26 @@
-fastapi>=0.115.0
-uvicorn>=0.30.0
-redis>=5.2.0
-psutil>=6.0.0
-nvidia-ml-py>=12.535.133
-pydantic>=2.9.2
-httpx>=0.27.0
-structlog>=24.4.0
-sounddevice
-numpy
-faster-whisper
-piper-tts
-webrtcvad
-torch
-torchaudio
+# Core framework
+fastapi>=0.115.0,<1.0.0
+uvicorn>=0.30.0,<1.0.0
+pydantic>=2.9.2,<3.0.0
+
+# Redis
+redis>=5.2.0,<6.0.0
+
+# System monitoring
+psutil>=6.0.0,<7.0.0
+nvidia-ml-py>=12.535.133,<13.0.0
+
+# HTTP & Logging
+httpx>=0.27.0,<1.0.0
+structlog>=24.4.0,<25.0.0
+
+# Audio & Voice
+sounddevice>=0.4.6,<1.0.0
+numpy>=1.26.0,<3.0.0
+faster-whisper>=1.0.0,<2.0.0
+piper-tts>=1.2.0,<2.0.0
+webrtcvad>=2.0.10,<3.0.0
+
+# ML
+torch>=2.0.0,<3.0.0
+torchaudio>=2.0.0,<3.0.0

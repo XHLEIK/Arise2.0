@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../config/app_config.dart';
+import 'api_client.dart';
 import 'model_service.dart';
 
 enum ChatRole { user, ai }
@@ -15,7 +18,7 @@ class ChatMessage {
 }
 
 class ChatService {
-  final String _baseUrl = 'http://localhost:8081/api/ai';
+  final String _baseUrl = '${AppConfig.springBaseUrl}/api/ai';
 
   final List<ChatMessage> _messages = [];
   final _messagesController = StreamController<List<ChatMessage>>.broadcast();
@@ -32,10 +35,12 @@ class ChatService {
     try {
       await http.post(
         Uri.parse('$_baseUrl/voice/mute'),
-        headers: {'Content-Type': 'application/json'},
+        headers: ApiClient.jsonHeaders,
         body: jsonEncode({'mute': _isSpeakerMuted}),
-      );
-    } catch (_) {}
+      ).timeout(ApiClient.defaultTimeout);
+    } catch (e) {
+      debugPrint('[ChatService] toggleSpeakerMute error: $e');
+    }
   }
 
   void generateGreeting() async {
@@ -57,16 +62,19 @@ class ChatService {
       try {
         await http.post(
           Uri.parse('$_baseUrl/voice/tts'),
-          headers: {'Content-Type': 'application/json'},
+          headers: ApiClient.jsonHeaders,
           body: jsonEncode({'text': greetingText}),
-        );
-      } catch (_) {}
+        ).timeout(ApiClient.defaultTimeout);
+      } catch (e) {
+        debugPrint('[ChatService] generateGreeting TTS error: $e');
+      }
     }
   }
 
   void sendMessage(String text) async {
     final activeModel = modelService.activeModel;
-    if (text.trim().isEmpty || activeModel == null) return;
+    final trimmed = text.trim();
+    if (trimmed.isEmpty || trimmed.length > 10000 || activeModel == null) return;
     String modelName = activeModel.name;
 
     final now = DateTime.now();
@@ -89,7 +97,7 @@ class ChatService {
 
     try {
       final request = http.Request('POST', Uri.parse('$_baseUrl/chat'))
-        ..headers['Content-Type'] = 'application/json'
+        ..headers.addAll(ApiClient.jsonHeaders)
         ..headers['Accept'] = 'text/event-stream'
         ..body = jsonEncode({
           'model': modelName,
@@ -175,14 +183,24 @@ class ChatService {
 
   Future<void> startVoiceMode() async {
     try {
-      await http.post(Uri.parse('$_baseUrl/voice/start'));
-    } catch (_) {}
+      await http.post(
+        Uri.parse('$_baseUrl/voice/start'),
+        headers: ApiClient.baseHeaders,
+      ).timeout(ApiClient.defaultTimeout);
+    } catch (e) {
+      debugPrint('[ChatService] startVoiceMode error: $e');
+    }
   }
 
   Future<void> stopVoiceMode() async {
     try {
-      await http.post(Uri.parse('$_baseUrl/voice/stop'));
-    } catch (_) {}
+      await http.post(
+        Uri.parse('$_baseUrl/voice/stop'),
+        headers: ApiClient.baseHeaders,
+      ).timeout(ApiClient.defaultTimeout);
+    } catch (e) {
+      debugPrint('[ChatService] stopVoiceMode error: $e');
+    }
   }
 }
 

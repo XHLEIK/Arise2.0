@@ -1,6 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+
+import '../config/app_config.dart';
+import 'api_client.dart';
 
 class OllamaModel {
   final String name;
@@ -47,7 +51,7 @@ class InstallingModel {
 }
 
 class ModelService extends Iterable {
-  final String _baseUrl = 'http://localhost:8081/api/models';
+  final String _baseUrl = '${AppConfig.springBaseUrl}/api/models';
 
   bool ollamaConnected = false;
   List<OllamaModel> models = [];
@@ -62,13 +66,12 @@ class ModelService extends Iterable {
   Iterator get iterator => models.iterator;
 
   void startPolling() {
+    if (_pollTimer != null) return; // Guard against duplicate polling
     fetchModels(silent: true);
     fetchInstallingModels();
 
     _pollTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       fetchInstallingModels();
-      // Only do a heavy fetchModels if we aren't loading and things look stale,
-      // but to keep it simple, fetch config periodically to check deleted via terminal
       fetchModels(silent: true);
     });
   }
@@ -81,8 +84,8 @@ class ModelService extends Iterable {
   Future<void> fetchInstallingModels() async {
     try {
       final response = await http
-          .get(Uri.parse('$_baseUrl/installing'))
-          .timeout(const Duration(seconds: 2));
+          .get(Uri.parse('$_baseUrl/installing'), headers: ApiClient.baseHeaders)
+          .timeout(const Duration(seconds: 5));
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         installingModels = data
@@ -90,7 +93,9 @@ class ModelService extends Iterable {
             .toList();
         onModelsUpdated?.call();
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[ModelService] fetchInstallingModels error: $e');
+    }
   }
 
   /// Fetches Ollama status and populates models if active.
@@ -101,7 +106,7 @@ class ModelService extends Iterable {
     }
     try {
       final statusRes = await http
-          .get(Uri.parse('$_baseUrl/ollama/status'))
+          .get(Uri.parse('$_baseUrl/ollama/status'), headers: ApiClient.baseHeaders)
           .timeout(const Duration(seconds: 3));
       if (statusRes.statusCode == 200) {
         final statusData = jsonDecode(statusRes.body);
@@ -112,10 +117,10 @@ class ModelService extends Iterable {
       if (ollamaConnected) {
         final responses = await Future.wait([
           http
-              .get(Uri.parse('$_baseUrl/list'))
+              .get(Uri.parse('$_baseUrl/list'), headers: ApiClient.baseHeaders)
               .timeout(const Duration(seconds: 5)),
           http
-              .get(Uri.parse('$_baseUrl/config'))
+              .get(Uri.parse('$_baseUrl/config'), headers: ApiClient.baseHeaders)
               .timeout(const Duration(seconds: 2))
               .catchError((_) => http.Response('{}', 200)),
         ]);
@@ -132,7 +137,9 @@ class ModelService extends Iterable {
           if (configRes.statusCode == 200) {
             try {
               rolesMap = jsonDecode(configRes.body);
-            } catch (_) {}
+            } catch (e) {
+              debugPrint('[ModelService] config parse error: $e');
+            }
           }
 
           List<OllamaModel> fetched = [];
@@ -155,7 +162,8 @@ class ModelService extends Iterable {
           }
         }
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[ModelService] fetchModels error: $e');
       ollamaConnected = false;
     }
     if (!silent) {
@@ -169,9 +177,9 @@ class ModelService extends Iterable {
     try {
       final response = await http.post(
         Uri.parse('$_baseUrl/config'),
-        headers: {'Content-Type': 'application/json'},
+        headers: ApiClient.jsonHeaders,
         body: jsonEncode({'model': modelName, 'role': role}),
-      );
+      ).timeout(ApiClient.defaultTimeout);
       if (response.statusCode == 200) {
         for (var m in models) {
           if (m.name == modelName) {
@@ -201,20 +209,25 @@ class ModelService extends Iterable {
         onModelsUpdated?.call();
         return true;
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[ModelService] setModelRole error: $e');
+    }
     return false;
   }
 
   /// Stores a Cloud Model Provider API Key securely on the backend.
   Future<bool> addCloudModel(String provider, String apiKey) async {
+    if (apiKey.trim().length < 10) return false;
     try {
       final response = await http.post(
         Uri.parse('$_baseUrl/cloud/add'),
-        headers: {'Content-Type': 'application/json'},
+        headers: ApiClient.jsonHeaders,
         body: jsonEncode({'provider': provider, 'apiKey': apiKey}),
-      );
+      ).timeout(ApiClient.defaultTimeout);
       return response.statusCode == 200;
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[ModelService] addCloudModel error: $e');
+    }
     return false;
   }
 
@@ -225,7 +238,10 @@ class ModelService extends Iterable {
 
   Future<bool> deleteModel(String modelName) async {
     try {
-      final response = await http.delete(Uri.parse('$_baseUrl/$modelName'));
+      final response = await http.delete(
+        Uri.parse('$_baseUrl/$modelName'),
+        headers: ApiClient.baseHeaders,
+      ).timeout(ApiClient.defaultTimeout);
       if (response.statusCode == 200) {
         models.removeWhere((m) => m.name == modelName);
         if (activeModel?.name == modelName) {
@@ -234,21 +250,31 @@ class ModelService extends Iterable {
         onModelsUpdated?.call();
         return true;
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[ModelService] deleteModel error: $e');
+    }
     return false;
   }
 
   /// Initiates a pull request on the backend. Updates will arrive via `fetchInstallingModels()`.
   Future<void> pullModel(String modelName) async {
-    if (modelName.isEmpty) return;
+    final name = modelName.trim();
+    if (name.isEmpty || name.length > 128) return;
+    if (!RegExp(r'^[a-zA-Z0-9._:/-]+$').hasMatch(name)) return;
 
     try {
       await http.post(
         Uri.parse('$_baseUrl/pull'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'name': modelName}),
-      );
-    } catch (_) {}
+        headers: ApiClient.jsonHeaders,
+        body: jsonEncode({'name': name}),
+      ).timeout(ApiClient.longTimeout);
+    } catch (e) {
+      debugPrint('[ModelService] pullModel error: $e');
+    }
+  }
+
+  void dispose() {
+    stopPolling();
   }
 }
 

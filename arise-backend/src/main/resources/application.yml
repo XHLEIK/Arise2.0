@@ -1,14 +1,20 @@
 server:
   port: 8081
+  tomcat:
+    max-http-form-post-size: 1048576
+  shutdown: graceful
 
 spring:
   application:
     name: arise-backend
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
       timeout: 2000
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
 
 management:
   endpoints:
@@ -17,20 +23,23 @@ management:
         include: health,info
   endpoint:
     health:
-      show-details: always
+      show-details: when-authorized
 
 logging:
   level:
     root: INFO
-    com.arise: DEBUG
+    com.arise: INFO
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
 
 arise:
   security:
     jwt:
-      secret: "z7M/vRtVf+Qo3+fP3U5FvK9nK6gJtFfJzE+TcL+sWw8=" # Replace in prod
+      secret: "${ARISE_JWT_SECRET:z7M/vRtVf+Qo3+fP3U5FvK9nK6gJtFfJzE+TcL+sWw8=}"
       expiration: 86400000
-    api-key: "arise-local-dev-key"
+    api-key: "${ARISE_API_KEY:arise-local-dev-key}"
+  encryption-key: "${ARISE_ENCRYPTION_KEY:Ar1s3S3cur3K3y2024Pr0duct10nR3ady}"
   ollama:
+    base-url: "${OLLAMA_URL:http://localhost:11434/api}"
     max-loaded-models: ${OLLAMA_MAX_LOADED_MODELS:2}
+  weather-api-key: "${WEATHER_API_KEY:727217ed2126409a9a2165652261304}"

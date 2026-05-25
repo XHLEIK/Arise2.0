@@ -1,6 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+
+import '../config/app_config.dart';
+import 'api_client.dart';
 
 class AudioDevice {
   final String id;
@@ -27,7 +31,7 @@ class AudioDevice {
 }
 
 class DeviceService {
-  final String _baseUrl = 'http://localhost:8081/api/ai/voice';
+  final String _baseUrl = '${AppConfig.springBaseUrl}/api/ai/voice';
 
   List<AudioDevice> _devices = [];
   AudioDevice? _selectedInput;
@@ -50,42 +54,17 @@ class DeviceService {
       // Mocking device list if backend doesn't support it yet
       // A real implementation would call the backend
       final response = await http
-          .get(Uri.parse('$_baseUrl/devices'))
-          .timeout(const Duration(seconds: 2));
+          .get(Uri.parse('$_baseUrl/devices'), headers: ApiClient.baseHeaders)
+          .timeout(const Duration(seconds: 5));
       if (response.statusCode == 200) {
         final List data = jsonDecode(response.body);
         _devices = data.map((e) => AudioDevice.fromJson(e)).toList();
       } else {
         throw Exception('Failed to load devices: ${response.statusCode}');
       }
-    } catch (_) {
-      // Fallback for UI if backend endpoint is missing
-      _devices = [
-        AudioDevice(
-          id: 'default_in',
-          name: 'System Default Microphone',
-          isInput: true,
-          isOutput: false,
-        ),
-        AudioDevice(
-          id: 'default_out',
-          name: 'System Default Speaker',
-          isInput: false,
-          isOutput: true,
-        ),
-        AudioDevice(
-          id: 'usb_mic',
-          name: 'USB Condenser Microphone',
-          isInput: true,
-          isOutput: false,
-        ),
-        AudioDevice(
-          id: 'hdmi_out',
-          name: 'HDMI Output (Monitor)',
-          isInput: false,
-          isOutput: true,
-        ),
-      ];
+    } catch (e) {
+      debugPrint('[DeviceService] scanDevices error: $e');
+      _devices = [];
     }
 
     _devicesController.add(_devices);
@@ -116,10 +95,12 @@ class DeviceService {
     try {
       await http.post(
         Uri.parse('$_baseUrl/device'),
-        headers: {'Content-Type': 'application/json'},
+        headers: ApiClient.jsonHeaders,
         body: jsonEncode({'type': type, 'deviceId': deviceId}),
-      );
-    } catch (_) {}
+      ).timeout(ApiClient.defaultTimeout);
+    } catch (e) {
+      debugPrint('[DeviceService] _notifyBackend error: $e');
+    }
   }
 
   void dispose() {

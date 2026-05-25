@@ -3,8 +3,8 @@ package com.arise.controller;
 import com.arise.service.ModelConfigService;
 import com.arise.service.ModelManagerService;
 import com.arise.util.EncryptionUtil;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -18,27 +18,40 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import java.util.Map;
 import java.util.Collection;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @RestController
 @RequestMapping("/api/models")
-@RequiredArgsConstructor
 public class ModelController {
 
     private final ModelManagerService modelManagerService;
     private final ModelConfigService modelConfigService;
     private final EncryptionUtil encryptionUtil;
-
-    private final WebClient webClient = WebClient.builder().baseUrl("http://localhost:11434/api").build();
+    private final WebClient webClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    // In-memory secure store for Cloud API Keys (in production, use Vault or a
-    // secure DB)
+    // In-memory secure store for Cloud API Keys (in production, use Vault or a secure DB)
     private final Map<String, String> cloudApiKeys = new ConcurrentHashMap<>();
 
     // Globally track installation streams so Flutter can poll `GET /installing`
     private final Map<String, Map<String, Object>> activePulls = new ConcurrentHashMap<>();
+
+    private static final Set<String> VALID_ROLES = Set.of("Conversation", "Coding", "Both", "Idle");
+    private static final Set<String> VALID_PROVIDERS = Set.of("openai", "anthropic", "google", "mistral", "groq");
+    private static final int MAX_MODEL_NAME_LENGTH = 128;
+
+    public ModelController(
+            ModelManagerService modelManagerService,
+            ModelConfigService modelConfigService,
+            EncryptionUtil encryptionUtil,
+            @Qualifier("ollamaWebClient") WebClient webClient) {
+        this.modelManagerService = modelManagerService;
+        this.modelConfigService = modelConfigService;
+        this.encryptionUtil = encryptionUtil;
+        this.webClient = webClient;
+    }
 
     @GetMapping("/installing")
     public ResponseEntity<Collection<Map<String, Object>>> getInstallingModels() {
@@ -86,8 +99,16 @@ public class ModelController {
         String modelName = request.get("model");
         String role = request.get("role");
 
-        if (modelName == null || role == null) {
+        if (modelName == null || modelName.isBlank() || role == null || role.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Model and role required"));
+        }
+
+        if (!isValidModelName(modelName)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Invalid model name"));
+        }
+
+        if (!VALID_ROLES.contains(role)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Invalid role. Allowed: " + VALID_ROLES));
         }
 
         modelConfigService.setModelRole(modelName, role);
@@ -97,8 +118,12 @@ public class ModelController {
     @PostMapping("/select")
     public ResponseEntity<?> selectModel(@RequestBody Map<String, String> request) {
         String modelName = request.get("model");
-        if (modelName == null || modelName.isEmpty()) {
+        if (modelName == null || modelName.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Model name required"));
+        }
+
+        if (!isValidModelName(modelName)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Invalid model name"));
         }
 
         // This coordinates safe load/unload via Redis Event Bus
@@ -115,8 +140,12 @@ public class ModelController {
     @PostMapping(value = "/pull", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> pullModel(@RequestBody Map<String, String> request) {
         String modelName = request.get("name");
-        if (modelName == null || modelName.isEmpty()) {
+        if (modelName == null || modelName.isBlank()) {
             return Flux.just("{\"error\": \"Model name required\"}");
+        }
+
+        if (!isValidModelName(modelName)) {
+            return Flux.just("{\"error\": \"Invalid model name\"}");
         }
 
         log.info("Initiating streaming pull for {}", modelName);
@@ -158,7 +187,7 @@ public class ModelController {
                             }
                         }
                     } catch (Exception e) {
-                        // ignore malformed chunks
+                        log.debug("Malformed pull chunk: {}", e.getMessage());
                     }
                 })
                 .doOnComplete(() -> {
@@ -169,7 +198,7 @@ public class ModelController {
                     log.error("Failed pulling model {}", modelName, e);
                     activePulls.remove(modelName);
                 })
-                .onErrorResume(e -> Flux.just("{\"error\": \"" + e.getMessage() + "\"}"));
+                .onErrorResume(e -> Flux.just("{\"error\": \"Failed to pull model. Please check Ollama is running.\"}"));
     }
 
     @PostMapping("/cloud/add")
@@ -177,20 +206,34 @@ public class ModelController {
         String provider = request.get("provider");
         String apiKey = request.get("apiKey");
 
-        if (provider == null || apiKey == null) {
+        if (provider == null || provider.isBlank() || apiKey == null || apiKey.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Provider and apiKey required"));
         }
 
-        // Encrypt and store API key securely
-        String encryptedKey = encryptionUtil.encrypt(apiKey);
-        cloudApiKeys.put(provider.toLowerCase(), encryptedKey);
+        String normalizedProvider = provider.toLowerCase().trim();
+        if (!VALID_PROVIDERS.contains(normalizedProvider)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Unsupported provider. Allowed: " + VALID_PROVIDERS));
+        }
 
-        log.info("Successfully added and encrypted API key for cloud provider: {}", provider);
-        return ResponseEntity.ok(Map.of("status", "success", "provider", provider));
+        // Validate API key format — minimum length check
+        if (apiKey.trim().length() < 10 || apiKey.trim().length() > 256) {
+            return ResponseEntity.badRequest().body(Map.of("error", "API key must be between 10 and 256 characters"));
+        }
+
+        // Encrypt and store API key securely
+        String encryptedKey = encryptionUtil.encrypt(apiKey.trim());
+        cloudApiKeys.put(normalizedProvider, encryptedKey);
+
+        log.info("Successfully added and encrypted API key for cloud provider: {}", normalizedProvider);
+        return ResponseEntity.ok(Map.of("status", "success", "provider", normalizedProvider));
     }
 
     @DeleteMapping("/{name}")
     public Mono<ResponseEntity<Map<String, String>>> deleteModel(@PathVariable String name) {
+        if (!isValidModelName(name)) {
+            return Mono.just(ResponseEntity.badRequest().body(Map.of("error", "Invalid model name")));
+        }
+
         return webClient.method(java.util.Objects.requireNonNull(HttpMethod.DELETE))
                 .uri("/delete")
                 .bodyValue(java.util.Objects.requireNonNull(Map.of("name", name)))
@@ -198,6 +241,13 @@ public class ModelController {
                 .toBodilessEntity()
                 .map(response -> ResponseEntity.ok(Map.of("status", "deleted", "model", name)))
                 .onErrorResume(e -> Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                        .body(Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown exception"))));
+                        .body(Map.of("error", "Failed to delete model. Please check Ollama is running."))));
+    }
+
+    private boolean isValidModelName(String name) {
+        return name != null
+                && !name.isBlank()
+                && name.length() <= MAX_MODEL_NAME_LENGTH
+                && name.matches("^[a-zA-Z0-9._:/-]+$");
     }
 }

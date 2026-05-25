@@ -1,6 +1,7 @@
 import structlog
 import threading
 import time
+import math
 import numpy as np
 import json
 import re
@@ -18,6 +19,7 @@ class VoiceSessionManager:
     def __init__(self, event_bus: EventBus):
         self.bus = event_bus
         self.bus.subscribe("voice_events", self._handle_voice_events)
+        self._lock = threading.Lock()
         self.is_active = False
         self.is_muted = False
 
@@ -255,12 +257,17 @@ class VoiceSessionManager:
                 fft_vals = np.abs(np.fft.rfft(new_samples))
                 bands = np.array_split(fft_vals, 12)
                 cur_bands = np.array([np.log1p(np.mean(b)) if len(b) > 0 else 0 for b in bands])
-                self._fft_ema_bands = 0.7 * self._fft_ema_bands + 0.3 * cur_bands
+                # NaN guard
+                cur_bands = np.where(np.isfinite(cur_bands), cur_bands, 0.0)
+                with self._lock:
+                    self._fft_ema_bands = 0.7 * self._fft_ema_bands + 0.3 * cur_bands
+                    fft_snapshot = self._fft_ema_bands.tolist()
                 
                 if not in_speech:
+                    rms_val = float(rms) if math.isfinite(float(rms)) else 0.0
                     self.bus.publish("voice_events", "MIC_AMPLITUDE", {
-                        "value": float(rms),
-                        "fft_ema": self._fft_ema_bands.tolist()
+                        "value": rms_val,
+                        "fft_ema": fft_snapshot
                     })
 
             if time.time() - self._last_tts_end_time < 0.1:
