@@ -37,6 +37,7 @@ class WeatherService {
 
   Timer? _weatherTimer;
   Timer? _clockTimer;
+  bool _isDisposed = false;
 
   WeatherData _lastKnownWeather = WeatherData.zero();
 
@@ -76,6 +77,7 @@ class WeatherService {
           city: data['city'] ?? 'Unknown Location',
           localTime: _formatCurrentTime(),
         );
+        if (_isDisposed) return;
         _weatherController.add(_lastKnownWeather);
       }
     } catch (e) {
@@ -92,6 +94,7 @@ class WeatherService {
         city: _lastKnownWeather.city,
         localTime: _formatCurrentTime(),
       );
+      if (_isDisposed) return;
       _weatherController.add(_lastKnownWeather);
     }
   }
@@ -107,6 +110,7 @@ class WeatherService {
   }
 
   void dispose() {
+    _isDisposed = true;
     stopPolling();
     _weatherController.close();
   }

@@ -20,7 +20,7 @@ public class ModelConfigService {
 
     private static final String CONFIG_FILE = "models_config.json";
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final WebClient ollamaClient = WebClient.builder().baseUrl("http://localhost:11434/api").build();
+    private final WebClient ollamaClient = WebClient.builder().baseUrl("http://localhost:11434").build();
 
     @Autowired
     private EventService eventService;
@@ -75,7 +75,7 @@ public class ModelConfigService {
         eventService.publishEvent("info", "Loading " + modelName + "...");
 
         ollamaClient.post()
-                .uri("/generate")
+                .uri("/api/generate")
                 .bodyValue(java.util.Objects.requireNonNull(Map.of("model", modelName, "keep_alive", "10m")))
                 .retrieve()
                 .bodyToMono(String.class)

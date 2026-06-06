@@ -47,8 +47,6 @@ class SystemMetrics {
 }
 
 class SystemMetricsService {
-  final String _baseUrl = '${AppConfig.springBaseUrl}/api/system';
-
   // Keep 20 data points for the sparkline history
   final int _maxHistory = 20;
 
@@ -60,6 +58,7 @@ class SystemMetricsService {
   final List<double> _cpuHistory = [];
   final List<double> _gpuHistory = [];
   final List<double> _ramHistory = [];
+  bool _isDisposed = false;
 
   Timer? _pollingTimer;
 
@@ -102,6 +101,7 @@ class SystemMetricsService {
         _updateHistory(_gpuHistory, metrics.gpuUsage, _gpuHistoryController);
         _updateHistory(_ramHistory, metrics.ramUsage, _ramHistoryController);
 
+        if (_isDisposed) return;
         _metricsController.add(metrics);
       } else {
         _handleDisconnect();
@@ -117,6 +117,7 @@ class SystemMetricsService {
     _updateHistory(_cpuHistory, 0.0, _cpuHistoryController);
     _updateHistory(_gpuHistory, 0.0, _gpuHistoryController);
     _updateHistory(_ramHistory, 0.0, _ramHistoryController);
+    if (_isDisposed) return;
     _metricsController.add(zeros);
   }
 
@@ -129,10 +130,12 @@ class SystemMetricsService {
     if (history.length > _maxHistory) {
       history.removeAt(0);
     }
+    if (_isDisposed) return;
     controller.add(List.from(history)); // emit copy
   }
 
   void dispose() {
+    _isDisposed = true;
     stopPolling();
     _cpuHistoryController.close();
     _gpuHistoryController.close();

@@ -38,7 +38,7 @@ class AudioPreprocessor:
 
 class MicCaptureThread:
     """Continuous low-latency microphone capture depositing into a RingBuffer."""
-    def __init__(self, ring_buffer, sample_rate=16000, channels=1):
+    def __init__(self, ring_buffer, sample_rate=16000, channels=1, device_id=None):
         self.ring_buffer = ring_buffer
         self.sample_rate = sample_rate
         self.channels = channels
@@ -46,6 +46,7 @@ class MicCaptureThread:
         self._stream = None
         self.preprocessor = AudioPreprocessor()
         self.is_speech_flag = False
+        self.device_id = device_id
 
     def _audio_callback(self, indata, frames, time_info, status):
         """Hardware IRQ callback pushing strictly copied frames to the global RingBuffer."""
@@ -59,12 +60,28 @@ class MicCaptureThread:
         """Allow VAD to feedback if speech is detected to pause noise profiling."""
         self.is_speech_flag = is_speech
 
+    def update_device(self, device_id):
+        """Update device ID and recreate stream dynamically if running."""
+        self.device_id = device_id
+        if self._stream is not None:
+            was_running = self._is_running
+            self._is_running = False
+            try:
+                self._stream.stop()
+                self._stream.close()
+            except Exception as e:
+                logger.error("Error closing stream during device update", error=str(e))
+            self._stream = None
+            if was_running:
+                self.start()
+
     def start(self):
         self._is_running = True
         if self._stream is not None:
             return  # Already initialized
             
         self._stream = sd.InputStream(
+            device=self.device_id,
             samplerate=self.sample_rate,
             channels=self.channels,
             dtype=np.float32,
@@ -73,9 +90,9 @@ class MicCaptureThread:
         )
         try:
             self._stream.start()
-            logger.info("Microphone streaming layer initialized", sample_rate=self.sample_rate)
+            logger.info("Microphone streaming layer initialized", sample_rate=self.sample_rate, device_id=self.device_id)
         except Exception as e:
-            logger.error("Failed to acquire hardware OS Microphone lock", error=str(e))
+            logger.error("Failed to acquire hardware OS Microphone lock", error=str(e), device_id=self.device_id)
             self._is_running = False
 
     def stop(self):

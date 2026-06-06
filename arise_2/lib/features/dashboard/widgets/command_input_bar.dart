@@ -26,10 +26,10 @@ class _CommandInputBarState extends State<CommandInputBar> {
   void initState() {
     super.initState();
     _focusNode.addListener(() {
-      setState(() => _isFocused = _focusNode.hasFocus);
+      if (mounted) setState(() => _isFocused = _focusNode.hasFocus);
     });
     _controller.addListener(() {
-      setState(() => _hasText = _controller.text.isNotEmpty);
+      if (mounted) setState(() => _hasText = _controller.text.isNotEmpty);
     });
     _voiceStateSub = liveFeedService.voiceStateStream.listen((state) {
       if (mounted) {
@@ -144,10 +144,14 @@ class _CommandInputBarState extends State<CommandInputBar> {
                     color: AriseColors.outline,
                   ),
                   const SizedBox(width: 6),
-                  Text(
-                    'Model: ${modelService.activeModel?.name ?? 'Initializing...'}',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: AriseColors.outline,
+                  Flexible(
+                    child: Text(
+                      'Model: ${modelService.activeModel?.name ?? 'Initializing...'}',
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: AriseColors.outline,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 16),

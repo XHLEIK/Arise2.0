@@ -40,6 +40,6 @@ arise:
     api-key: "${ARISE_API_KEY:arise-local-dev-key}"
   encryption-key: "${ARISE_ENCRYPTION_KEY:Ar1s3S3cur3K3y2024Pr0duct10nR3ady}"
   ollama:
-    base-url: "${OLLAMA_URL:http://localhost:11434/api}"
+    base-url: "${OLLAMA_URL:http://localhost:11434}"
     max-loaded-models: ${OLLAMA_MAX_LOADED_MODELS:2}
   weather-api-key: "${WEATHER_API_KEY:727217ed2126409a9a2165652261304}"

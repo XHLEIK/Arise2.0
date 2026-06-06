@@ -4,6 +4,7 @@ import numpy as np
 import sounddevice as sd
 from pathlib import Path
 import queue
+import math
 
 # Use the native Python piper wrapper (pip install piper-tts)
 try:
@@ -15,15 +16,17 @@ logger = structlog.get_logger()
 
 class PiperTTSEngine:
     """True streaming ultra-low-latency CPU-based Piper TTS execution."""
-    def __init__(self, model_path="models/en_US-lessac-medium.onnx"):
+    def __init__(self, model_path="models/en_US-lessac-medium.onnx", device_id=None):
         self.model_path = model_path
         self.voice = None
+        self.device_id = device_id
         
         self.text_queue = queue.Queue()
         self.audio_queue = queue.Queue()
         
         self.on_playback_start = None
         self.on_playback_end = None
+        self.should_stop_playback = threading.Event()
         
         self.synth_thread = threading.Thread(target=self._synth_worker, daemon=True)
         self.playback_thread = threading.Thread(target=self._playback_worker, daemon=True)
@@ -33,6 +36,10 @@ class PiperTTSEngine:
         if self.voice:
             self.synth_thread.start()
             self.playback_thread.start()
+
+    def update_device(self, device_id):
+        """Update active playback speaker device ID."""
+        self.device_id = device_id
 
     def _ensure_model_exists(self):
         model_file = Path(self.model_path)
@@ -109,21 +116,35 @@ class PiperTTSEngine:
                 if not is_playing:
                     is_playing = True
                     if self.on_playback_start: self.on_playback_start()
+
+                # Reset the stop flag before starting this phrase
+                self.should_stop_playback.clear()
                     
                 # wait for audio chunk in queue, play audio once
                 try:
                     # Open stream safely, play precisely once, then strictly close it.
                     # This completely prevents hardware circular buffer loops on underflow.
-                    stream = sd.OutputStream(samplerate=self.voice.config.sample_rate, channels=1, dtype=np.int16)
+                    stream = sd.OutputStream(
+                        device=self.device_id,
+                        samplerate=self.voice.config.sample_rate,
+                        channels=1,
+                        dtype=np.int16
+                    )
                     stream.start()
                     
                     chunk_size = self.voice.config.sample_rate // 10 # 100ms chunks for amplitude events
+                    interrupted = False
                     for i in range(0, len(frames), chunk_size):
+                        if self.should_stop_playback.is_set():
+                            logger.info("TTS playback interrupted by barge-in")
+                            interrupted = True
+                            break
                         sub_frames = frames[i:i+chunk_size]
                         stream.write(sub_frames)
                         if event_bus:
                             rms = np.sqrt(np.mean(np.square(sub_frames.astype(np.float32) / 32768.0)))
-                            event_bus.publish("voice_events", "TTS_AMPLITUDE", {"value": float(rms)})
+                            rms_val = float(rms) if math.isfinite(float(rms)) else 0.0
+                            event_bus.publish("voice_events", "TTS_AMPLITUDE", {"value": rms_val})
                             
                     stream.stop()
                     stream.close()
@@ -151,6 +172,8 @@ class PiperTTSEngine:
             self.text_queue.put(("FINAL", None, None))
             
     def clear_queue(self):
+        # Signal active playback to stop immediately
+        self.should_stop_playback.set()
         while not self.text_queue.empty():
             try: self.text_queue.get_nowait()
             except: pass

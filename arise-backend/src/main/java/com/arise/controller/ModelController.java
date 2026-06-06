@@ -15,6 +15,7 @@ import reactor.core.publisher.Mono;
 import org.springframework.http.HttpMethod;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
+import java.io.IOException;
 
 import java.util.Map;
 import java.util.Collection;
@@ -61,7 +62,7 @@ public class ModelController {
     @GetMapping("/ollama/status")
     public Mono<ResponseEntity<Map<String, Object>>> getOllamaStatus() {
         return webClient.get()
-                .uri("/version")
+                .uri("/api/version")
                 .retrieve()
                 .bodyToMono(Map.class)
                 .map(response -> ResponseEntity.ok(Map.<String, Object>of(
@@ -69,7 +70,14 @@ public class ModelController {
                         "running", true,
                         "version", response.get("version"))))
                 .onErrorResume(e -> {
-                    log.warn("Ollama is not running or not installed.");
+                    log.warn("Ollama is not running or not installed. Attempting to auto-start Ollama...");
+                    try {
+                        new ProcessBuilder("cmd.exe", "/c", "ollama list")
+                                .redirectErrorStream(true)
+                                .start();
+                    } catch (IOException ioException) {
+                        log.error("Failed to auto-start Ollama: {}", ioException.getMessage());
+                    }
                     return Mono.just(ResponseEntity.ok(Map.of(
                             "installed", false,
                             "running", false,
@@ -80,7 +88,7 @@ public class ModelController {
     @GetMapping("/list")
     public Mono<ResponseEntity<String>> listModels() {
         return webClient.get()
-                .uri("/tags")
+                .uri("/api/tags")
                 .retrieve()
                 .bodyToMono(String.class)
                 .map(ResponseEntity::ok)
@@ -161,7 +169,7 @@ public class ModelController {
         long startTime = System.currentTimeMillis();
 
         return webClient.post()
-                .uri("/pull")
+                .uri("/api/pull")
                 .bodyValue(java.util.Objects.requireNonNull(Map.of("name", modelName, "stream", true)))
                 .retrieve()
                 .bodyToFlux(String.class)
@@ -235,7 +243,7 @@ public class ModelController {
         }
 
         return webClient.method(java.util.Objects.requireNonNull(HttpMethod.DELETE))
-                .uri("/delete")
+                .uri("/api/delete")
                 .bodyValue(java.util.Objects.requireNonNull(Map.of("name", name)))
                 .retrieve()
                 .toBodilessEntity()

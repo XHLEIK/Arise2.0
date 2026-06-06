@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 
 from services.system_monitor import SystemMonitor
 from services.ollama_worker import OllamaRedisWorker
+from services.action_handler import ActionHandler
 
 from voice_engine.event_bus import EventBus
 from voice_engine.voice_manager import VoiceSessionManager
@@ -29,6 +30,7 @@ ollama_worker = OllamaRedisWorker()
 # Voice Engine instances
 event_bus = EventBus(host=REDIS_HOST, port=REDIS_PORT, db=11, password=REDIS_PASSWORD)
 voice_manager = VoiceSessionManager(event_bus)
+action_handler = ActionHandler()
 
 
 def _handle_voice_commands(event):
@@ -68,10 +70,21 @@ async def lifespan(app: FastAPI):
     # 3. Start EventBus tracking background thread
     event_bus_task = asyncio.create_task(asyncio.to_thread(event_bus.listen_loop))
 
+    # 4. Scan installed applications for action handler automatically on startup
+    try:
+        app_count, _ = action_handler.scan_system_apps()
+        logger.info("App scanner indexed applications", count=app_count)
+    except Exception as e:
+        logger.error("App scanner failed", error=str(e))
+
+    # 5. Start background directory watcher for newly installed apps
+    action_handler.start_watcher(interval=60)
+
     yield
 
     # Shutdown: Clean up workers
     logger.info("Shutting down A.R.I.S.E Python Backend Services")
+    action_handler.stop_watcher()
     system_monitor.stop()
     ollama_worker.stop()
     voice_manager.stop()
@@ -97,6 +110,44 @@ async def api_key_middleware(request: Request, call_next):
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "nvml_available": system_monitor.nvml_initialized}
+
+
+@app.get("/devices")
+async def list_devices():
+    import sounddevice as sd
+    try:
+        devices = sd.query_devices()
+        device_list = []
+        for idx, dev in enumerate(devices):
+            device_list.append({
+                "id": str(idx),
+                "name": dev["name"],
+                "maxInputChannels": dev["max_input_channels"],
+                "maxOutputChannels": dev["max_output_channels"],
+                "is_input": dev["max_input_channels"] > 0,
+                "is_output": dev["max_output_channels"] > 0
+            })
+        return device_list
+    except Exception as e:
+        logger.error("Failed to query sound devices", error=str(e))
+        return []
+
+
+@app.post("/device")
+async def select_device(request: Request):
+    try:
+        data = await request.json()
+        dev_type = data.get("type")  # "input" or "output"
+        device_id_str = data.get("deviceId")
+        if not dev_type or not device_id_str:
+            return JSONResponse(status_code=400, content={"error": "Missing type or deviceId"})
+        
+        device_id = int(device_id_str)
+        voice_manager.select_device(dev_type, device_id)
+        return {"status": "success", "type": dev_type, "deviceId": device_id}
+    except Exception as e:
+        logger.error("Failed to select device", error=str(e))
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 def _safe_float(value, fallback=0.0):
@@ -132,6 +183,49 @@ async def get_metrics():
         storageUsage=_safe_float(disk.percent),
         timestamp=datetime.now().isoformat()
     )
+
+
+@app.post("/execute-action")
+async def execute_action(request: Request):
+    try:
+        data = await request.json()
+        action = data.get("action", "")
+        target = data.get("target", "")
+
+        if not action or not target:
+            return JSONResponse(status_code=400, content={"status": "error", "message": "Missing action or target"})
+
+        # Length validation
+        if len(action) > 50 or len(target) > 500:
+            return JSONResponse(status_code=400, content={"status": "error", "message": "Input too long"})
+
+        result = action_handler.execute_action(action, target)
+        return result
+    except ValueError as e:
+        return JSONResponse(status_code=400, content={"status": "error", "message": str(e)})
+    except Exception as e:
+        logger.error("Action execution failed", error=str(e))
+        return JSONResponse(status_code=500, content={"status": "error", "message": "Internal error"})
+
+
+@app.post("/scan-apps")
+async def scan_apps():
+    try:
+        count, _ = action_handler.scan_system_apps()
+        return {"status": "success", "indexed_count": count}
+    except Exception as e:
+        logger.error("App scan failed", error=str(e))
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@app.get("/apps/count")
+async def get_apps_count():
+    try:
+        return {"count": action_handler.get_app_count()}
+    except Exception as e:
+        logger.error("Failed to get app count", error=str(e))
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
 
 
 if __name__ == "__main__":

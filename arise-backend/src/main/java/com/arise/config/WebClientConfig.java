@@ -13,7 +13,7 @@ import java.time.Duration;
 public class WebClientConfig {
 
     @Bean
-    public WebClient ollamaWebClient(@Value("${arise.ollama.base-url:http://localhost:11434/api}") String ollamaBaseUrl) {
+    public WebClient ollamaWebClient(@Value("${arise.ollama.base-url:http://localhost:11434}") String ollamaBaseUrl) {
         HttpClient httpClient = HttpClient.create()
                 .responseTimeout(Duration.ofSeconds(120));
         return WebClient.builder()

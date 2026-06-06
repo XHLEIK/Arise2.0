@@ -38,20 +38,27 @@ class VoiceSessionManager:
         self._tts_buffer = ""
         self._last_tts_end_time = 0
         self._fft_ema_bands = np.zeros(12)
+        self.tts_playing = False
+        self._barge_in_speech_start = None
+        self._BARGE_IN_THRESHOLD = 0.4  # seconds of sustained speech to confirm interruption
 
     def _tts_start_callback(self):
         logger.info("TTS start triggered")
+        self.tts_playing = True
         self.bus.publish("voice_events", "TTS_START")
-        if self.is_active:
-            self.mic.stop()
+        # Keep mic running for barge-in detection — do NOT call self.mic.stop()
             
     def _tts_end_callback(self):
         logger.info("TTS end triggered")
+        self.tts_playing = False
+        self._barge_in_speech_start = None
         self._last_tts_end_time = time.time()
         self.bus.publish("voice_events", "TTS_END")
         if self.is_active:
             self.bus.publish("voice_events", "LISTENING")
-            self.mic.start()
+            # Ensure mic is running (it should already be, but safety check)
+            if not self.mic._is_running:
+                self.mic.start()
         else:
             self.bus.publish("voice_events", "VOICE_MODE_OFF")
 
@@ -61,16 +68,70 @@ class VoiceSessionManager:
         if self.is_muted:
             self.tts.clear_queue()
 
+    def select_device(self, dev_type: str, device_id: int):
+        logger.info("Voice Manager device selected", type=dev_type, device_id=device_id)
+        if dev_type == "input":
+            self.mic.update_device(device_id)
+        elif dev_type == "output":
+            self.tts.update_device(device_id)
+
+    def _speech_formatter(self, text: str) -> str:
+        """Normalize text for natural TTS output without altering the chat UI."""
+        if not text:
+            return text
+
+        out = text
+
+        # 1. Normalize assistant name variations to "Arise"
+        out = re.sub(r'A\.?\s*R\.?\s*I\.?\s*S\.?\s*E\.?', 'Arise', out, flags=re.IGNORECASE)
+
+        # 2. Strip markdown code blocks (```...```)
+        out = re.sub(r'```[\s\S]*?```', '', out)
+
+        # 3. Strip inline code backticks
+        out = re.sub(r'`([^`]*)`', r'\1', out)
+
+        # 4. Strip markdown headers
+        out = re.sub(r'^#{1,6}\s*', '', out, flags=re.MULTILINE)
+
+        # 5. Strip bold/italic markers
+        out = re.sub(r'\*{1,3}([^*]+)\*{1,3}', r'\1', out)
+        out = re.sub(r'_{1,3}([^_]+)_{1,3}', r'\1', out)
+
+        # 6. Convert numbered lists to spoken ordering
+        list_ordinals = ['First', 'Second', 'Third', 'Fourth', 'Fifth',
+                         'Sixth', 'Seventh', 'Eighth', 'Ninth', 'Tenth']
+        counter = [0]
+        def _numbered_replacer(m):
+            idx = counter[0]
+            counter[0] += 1
+            ordinal = list_ordinals[idx] if idx < len(list_ordinals) else f'Next'
+            return f'{ordinal}, '
+        out = re.sub(r'^\s*\d+[\.\)\-]\s*', _numbered_replacer, out, flags=re.MULTILINE)
+
+        # 7. Convert bullet points to sentence flow
+        out = re.sub(r'^\s*[\-\*•]\s*', '', out, flags=re.MULTILINE)
+
+        # 8. Clean up excessive whitespace / newlines
+        out = re.sub(r'\n{2,}', '. ', out)
+        out = re.sub(r'\n', ' ', out)
+        out = re.sub(r'\s{2,}', ' ', out)
+
+        return out.strip()
+
     def play_tts(self, text: str, is_final: bool = False):
         if not text.strip() and not is_final:
             return
             
         # Strip out any remaining SSML or HTML-like tags just to be completely safe
         clean_text = re.sub(r'<[^>]+>', '', text)
+
+        # Apply speech formatting for natural TTS output
+        formatted_text = self._speech_formatter(clean_text)
         
-        if clean_text.strip() or is_final:
-            logger.info("TTS_INPUT_TEXT", text=clean_text)
-            self.tts.synthesize_and_play(clean_text, is_final=is_final, event_bus=self.bus)
+        if formatted_text.strip() or is_final:
+            logger.info("TTS_INPUT_TEXT", text=formatted_text)
+            self.tts.synthesize_and_play(formatted_text, is_final=is_final, event_bus=self.bus)
 
     def _handle_voice_events(self, event):
         etype = event.get("type")
@@ -293,6 +354,29 @@ class VoiceSessionManager:
             
             self.mic.set_speech_flag(vad_state_is_speech)
 
+            # ── Barge-in detection during TTS playback ──
+            if self.tts_playing:
+                if vad_state_is_speech:
+                    if self._barge_in_speech_start is None:
+                        self._barge_in_speech_start = time.time()
+                    elif (time.time() - self._barge_in_speech_start) >= self._BARGE_IN_THRESHOLD:
+                        # Confirmed barge-in: user has been speaking long enough
+                        logger.info("Barge-in confirmed, interrupting TTS")
+                        self.tts.clear_queue()
+                        self._tts_buffer = ""
+                        self._barge_in_speech_start = None
+                        # Transition to normal speech tracking
+                        in_speech = True
+                        current_speech_idx = current_write_idx
+                        speech_start_time = time.time()
+                        silence_dur = 0
+                        self.bus.publish("voice_events", "USER_SPEAKING")
+                else:
+                    # Speech stopped before threshold — reset, it was just noise
+                    self._barge_in_speech_start = None
+                continue  # Skip normal speech logic while TTS is playing
+
+            # ── Normal speech detection (TTS not playing) ──
             if vad_state_is_speech:
                 if not in_speech:
                     in_speech = True

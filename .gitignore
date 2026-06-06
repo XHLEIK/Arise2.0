@@ -2,6 +2,11 @@
 # IDEs and OS files
 # =========================
 .vscode/
+node_modules/
+.claude/
+.claude-flow/
+.ruflo/
+.swarm/
 .idea/
 .gemini/
 tasks/
@@ -62,6 +67,9 @@ arise_2/android/key.properties
 arise_2/ios/.symlinks/
 arise_2/ios/Pods/
 GEMINI.md
+AGENTS.md
+CLAUDE.md
+
 
 
 

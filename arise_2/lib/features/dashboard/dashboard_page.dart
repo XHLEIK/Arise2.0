@@ -173,34 +173,62 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildRightColumn() {
+    final double targetWidth = MediaQuery.of(context).size.width * 0.30;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-          clipBehavior: Clip.hardEdge,
-          decoration: const BoxDecoration(),
-          width: _isAgentLogHidden ? 60 : MediaQuery.of(context).size.width * 0.30,
-          child: MemoryPanel(
-            metricsService: widget.metricsService,
-            isHidden: _isAgentLogHidden,
-            onToggle: () => setState(() => _isAgentLogHidden = !_isAgentLogHidden),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Expanded(
-          flex: _isSessionsHidden ? 0 : 1,
+        Flexible(
+          flex: _isAgentLogHidden ? 1 : (_isSessionsHidden ? 2 : 1),
+          fit: _isAgentLogHidden ? FlexFit.loose : FlexFit.tight,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeInOut,
             clipBehavior: Clip.hardEdge,
             decoration: const BoxDecoration(),
-            width: _isSessionsHidden ? 60 : MediaQuery.of(context).size.width * 0.30,
-            constraints: _isSessionsHidden ? const BoxConstraints(minHeight: 60) : null,
-            child: LiveFeedPanel(
-              isHidden: _isSessionsHidden,
-              onToggle: () => setState(() => _isSessionsHidden = !_isSessionsHidden),
+            constraints: BoxConstraints(
+              minWidth: _isAgentLogHidden ? 60 : targetWidth,
+              maxWidth: _isAgentLogHidden ? 60 : targetWidth,
+              minHeight: 0,
+              maxHeight: _isAgentLogHidden ? 60 : MediaQuery.of(context).size.height,
+            ),
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: _isAgentLogHidden ? 60 : targetWidth,
+                child: MemoryPanel(
+                  metricsService: widget.metricsService,
+                  isHidden: _isAgentLogHidden,
+                  onToggle: () => setState(() => _isAgentLogHidden = !_isAgentLogHidden),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Flexible(
+          flex: 1,
+          fit: _isSessionsHidden ? FlexFit.loose : FlexFit.tight,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            clipBehavior: Clip.hardEdge,
+            decoration: const BoxDecoration(),
+            constraints: BoxConstraints(
+              minWidth: _isSessionsHidden ? 60 : targetWidth,
+              maxWidth: _isSessionsHidden ? 60 : targetWidth,
+              minHeight: 0,
+              maxHeight: _isSessionsHidden ? 60 : MediaQuery.of(context).size.height,
+            ),
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: _isSessionsHidden ? 60 : targetWidth,
+                child: LiveFeedPanel(
+                  isHidden: _isSessionsHidden,
+                  onToggle: () => setState(() => _isSessionsHidden = !_isSessionsHidden),
+                ),
+              ),
             ),
           ),
         ),

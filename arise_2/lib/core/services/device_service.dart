@@ -36,6 +36,7 @@ class DeviceService {
   List<AudioDevice> _devices = [];
   AudioDevice? _selectedInput;
   AudioDevice? _selectedOutput;
+  bool _isDisposed = false;
 
   final _devicesController = StreamController<List<AudioDevice>>.broadcast();
   final _inputController = StreamController<AudioDevice?>.broadcast();
@@ -67,6 +68,7 @@ class DeviceService {
       _devices = [];
     }
 
+    if (_isDisposed) return;
     _devicesController.add(_devices);
 
     if (_selectedInput == null && _devices.any((d) => d.isInput)) {
@@ -80,6 +82,7 @@ class DeviceService {
   void selectInputDevice(AudioDevice device) {
     if (!device.isInput) return;
     _selectedInput = device;
+    if (_isDisposed) return;
     _inputController.add(device);
     _notifyBackend('input', device.id);
   }
@@ -87,6 +90,7 @@ class DeviceService {
   void selectOutputDevice(AudioDevice device) {
     if (!device.isOutput) return;
     _selectedOutput = device;
+    if (_isDisposed) return;
     _outputController.add(device);
     _notifyBackend('output', device.id);
   }
@@ -104,6 +108,7 @@ class DeviceService {
   }
 
   void dispose() {
+    _isDisposed = true;
     _devicesController.close();
     _inputController.close();
     _outputController.close();
