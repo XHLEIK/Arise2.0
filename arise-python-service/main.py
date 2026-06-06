@@ -10,6 +10,10 @@ from services.system_monitor import SystemMonitor
 from services.ollama_worker import OllamaRedisWorker
 from services.action_handler import ActionHandler
 
+from database.chroma_store import init_chroma
+from database.vector_store import TurbovecMemoryIndex
+from database.sqlite_store import init_schema, log_system_event
+
 from voice_engine.event_bus import EventBus
 from voice_engine.voice_manager import VoiceSessionManager
 
@@ -31,6 +35,8 @@ ollama_worker = OllamaRedisWorker()
 event_bus = EventBus(host=REDIS_HOST, port=REDIS_PORT, db=11, password=REDIS_PASSWORD)
 voice_manager = VoiceSessionManager(event_bus)
 action_handler = ActionHandler()
+chroma_client, chroma_collection = None, None
+turbovec_index = TurbovecMemoryIndex()
 
 
 def _handle_voice_commands(event):
@@ -60,6 +66,12 @@ event_bus.subscribe("voice_commands", _handle_voice_commands)
 async def lifespan(app: FastAPI):
     # Startup: Start background workers
     logger.info("Starting A.R.I.S.E Python Backend Services", host=HOST, port=PORT)
+
+    init_schema()
+    global chroma_client, chroma_collection
+    chroma_client, chroma_collection = init_chroma()
+    turbovec_index.initialize()
+    log_system_event("python_service_started", event_data=f"host={HOST},port={PORT}")
 
     # 1. Start system metrics publisher (psutil + NVML)
     monitor_task = asyncio.create_task(system_monitor.start_monitoring())

@@ -31,7 +31,7 @@ public class SecurityConfig {
                     var config = new CorsConfiguration();
                     // Restrict CORS to localhost origins only (Flutter desktop + dev servers)
                     config.setAllowedOriginPatterns(List.of("http://localhost:*", "http://127.0.0.1:*"));
-                    config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+                    config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
                     config.setAllowedHeaders(List.of("X-API-KEY", "Authorization", "Content-Type", "Accept"));
                     config.setAllowCredentials(true);
                     return config;

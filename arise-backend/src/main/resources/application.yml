@@ -33,6 +33,12 @@ logging:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
 
 arise:
+  database:
+    path: "${ARISE_DB_PATH:../data/arise_memory.db}"
+  session:
+    flush-message-threshold: 10
+    flush-inactivity-seconds: 30
+    safety-flush-interval-seconds: 10
   security:
     jwt:
       secret: "${ARISE_JWT_SECRET:z7M/vRtVf+Qo3+fP3U5FvK9nK6gJtFfJzE+TcL+sWw8=}"

@@ -5,6 +5,7 @@ import com.arise.service.AiRouterService;
 import com.arise.service.EventService;
 import com.arise.service.InstantDataService;
 import com.arise.service.ModelConfigService;
+import com.arise.service.SessionService;
 import com.arise.service.SystemMetricsService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -32,6 +33,7 @@ public class ChatController {
     private final EventService eventService;
     private final InstantDataService instantDataService;
     private final SystemMetricsService metricsService;
+    private final SessionService sessionService;
     private final WebClient webClient;
     private final WebClient pythonWebClient;
 
@@ -70,12 +72,14 @@ public class ChatController {
             EventService eventService,
             InstantDataService instantDataService,
             SystemMetricsService metricsService,
+            SessionService sessionService,
             @Qualifier("ollamaWebClient") WebClient webClient) {
         this.modelConfigService = modelConfigService;
         this.aiRouterService = aiRouterService;
         this.eventService = eventService;
         this.instantDataService = instantDataService;
         this.metricsService = metricsService;
+        this.sessionService = sessionService;
         this.webClient = webClient;
         this.pythonWebClient = WebClient.builder().baseUrl("http://localhost:8002").build();
         this.systemPrompt = loadSystemPrompt();
@@ -115,6 +119,7 @@ public class ChatController {
     public Flux<String> chat(@RequestBody Map<String, Object> request) {
         String message = (String) request.get("message");
         String model = (String) request.get("model");
+        String sessionIdParam = (String) request.get("session_id");
         Boolean muteTtsObj = (Boolean) request.get("mute_tts");
         boolean muteTts = muteTtsObj != null ? muteTtsObj : false;
 
@@ -132,6 +137,9 @@ public class ChatController {
         if (message.length() > MAX_MESSAGE_LENGTH) {
             return Flux.just("{\"error\": \"Message exceeds maximum length (" + MAX_MESSAGE_LENGTH + " chars)\"}");
         }
+
+        final String sessionId = sessionService.resolveSessionId(sessionIdParam, model);
+        sessionService.appendUserMessage(sessionId, message, model);
 
         // Check if a scan is pending and the user is confirming
         if (scanPending) {
@@ -155,7 +163,8 @@ public class ChatController {
                             eventService.publishEvent("voice_events", "AI_STREAM",
                                     "{\"response\": \"" + escapeJson(resultMsg) + "\"}");
                             eventService.publishEvent("voice_events", "AI_DISPATCH_COMPLETE", "{}");
-                            return "{\"response\": \"" + escapeJson(resultMsg) + "\", \"done\": true}";
+                            sessionService.appendAssistantMessage(sessionId, resultMsg, model);
+                            return "{\"response\": \"" + escapeJson(resultMsg) + "\", \"done\": true, \"session_id\": \"" + sessionId + "\"}";
                         })
                         .onErrorResume(e -> {
                             log.error("Failed to run app scan: {}", e.getMessage());
@@ -163,7 +172,8 @@ public class ChatController {
                             eventService.publishEvent("voice_events", "AI_STREAM",
                                     "{\"response\": \"" + escapeJson(errorMsg) + "\"}");
                             eventService.publishEvent("voice_events", "AI_DISPATCH_COMPLETE", "{}");
-                            return Mono.just("{\"response\": \"" + escapeJson(errorMsg) + "\", \"done\": true}");
+                            sessionService.appendAssistantMessage(sessionId, errorMsg, model);
+                            return Mono.just("{\"response\": \"" + escapeJson(errorMsg) + "\", \"done\": true, \"session_id\": \"" + sessionId + "\"}");
                         })
                         .flux();
             } else {
@@ -199,7 +209,7 @@ public class ChatController {
             eventService.publishEvent("voice_events", "AI_STREAM",
                     "{\"response\": \"" + escapeJson(clarification) + "\"}");
             eventService.publishEvent("voice_events", "AI_DISPATCH_COMPLETE", "{}");
-            return Flux.just("{\"response\": \"" + escapeJson(clarification) + "\", \"done\": true}");
+            return completeChatResponse(sessionId, model, clarification);
         }
 
         // 3b. INSTANT — serve data directly, send to TTS
@@ -209,7 +219,7 @@ public class ChatController {
             eventService.publishEvent("voice_events", "AI_STREAM",
                     "{\"response\": \"" + escapeJson(instantResponse) + "\"}");
             eventService.publishEvent("voice_events", "AI_DISPATCH_COMPLETE", "{}");
-            return Flux.just("{\"response\": \"" + escapeJson(instantResponse) + "\", \"done\": true}");
+            return completeChatResponse(sessionId, model, instantResponse);
         }
 
         // 3c. PERFORMATIVE — dispatch action to Python backend
@@ -288,7 +298,8 @@ public class ChatController {
                             eventService.publishEvent("voice_events", "AI_STREAM",
                                     "{\"response\": \"" + escapeJson(msg) + "\"}");
                             eventService.publishEvent("voice_events", "AI_DISPATCH_COMPLETE", "{}");
-                            return Mono.just("{\"response\": \"" + escapeJson(msg) + "\", \"done\": true}");
+                            sessionService.appendAssistantMessage(sessionId, msg, model);
+                            return Mono.just("{\"response\": \"" + escapeJson(msg) + "\", \"done\": true, \"session_id\": \"" + sessionId + "\"}");
                         }
 
                         // Otherwise, it was success, error, or not_found.
@@ -299,12 +310,14 @@ public class ChatController {
                             eventService.publishEvent("voice_events", "AI_STREAM",
                                     "{\"response\": \"" + escapeJson(combinedMsg) + "\"}");
                             eventService.publishEvent("voice_events", "AI_DISPATCH_COMPLETE", "{}");
-                            return Mono.just("{\"response\": \"" + escapeJson(combinedMsg) + "\", \"done\": true}");
+                            sessionService.appendAssistantMessage(sessionId, combinedMsg, model);
+                            return Mono.just("{\"response\": \"" + escapeJson(combinedMsg) + "\", \"done\": true, \"session_id\": \"" + sessionId + "\"}");
                         } else {
                             eventService.publishEvent("voice_events", "AI_STREAM",
                                     "{\"response\": \"" + escapeJson(msg) + "\"}");
                             eventService.publishEvent("voice_events", "AI_DISPATCH_COMPLETE", "{}");
-                            return Mono.just("{\"response\": \"" + escapeJson(msg) + "\", \"done\": true}");
+                            sessionService.appendAssistantMessage(sessionId, msg, model);
+                            return Mono.just("{\"response\": \"" + escapeJson(msg) + "\", \"done\": true, \"session_id\": \"" + sessionId + "\"}");
                         }
                     })
                     .onErrorResume(e -> {
@@ -314,7 +327,8 @@ public class ChatController {
                         eventService.publishEvent("voice_events", "AI_STREAM",
                                 "{\"response\": \"" + escapeJson(fallback) + "\"}");
                         eventService.publishEvent("voice_events", "AI_DISPATCH_COMPLETE", "{}");
-                        return Mono.just("{\"response\": \"" + escapeJson(fallback) + "\", \"done\": true}");
+                        sessionService.appendAssistantMessage(sessionId, fallback, model);
+                        return Mono.just("{\"response\": \"" + escapeJson(fallback) + "\", \"done\": true, \"session_id\": \"" + sessionId + "\"}");
                     })
                     .flux();
         }
@@ -349,6 +363,7 @@ public class ChatController {
                     );
 
                     String fullSystemPrompt = systemPrompt + dynamicContext;
+                    StringBuilder assistantBuffer = new StringBuilder();
 
                     Map<String, Object> ollamaPayload = Map.of(
                             "model", model,
@@ -368,11 +383,14 @@ public class ChatController {
                             .retrieve()
                             .bodyToFlux(String.class)
                             .doOnNext(chunk -> {
-                                // Publish raw chunks concurrently to Redis for Python Voice Engine TTS Synthesizer
                                 eventService.publishEvent("voice_events", "AI_STREAM", chunk);
+                                appendOllamaChunk(assistantBuffer, chunk);
                             })
                             .doFinally(signalType -> {
                                 eventService.publishEvent("voice_events", "AI_DISPATCH_COMPLETE", "{}");
+                                if (!assistantBuffer.isEmpty()) {
+                                    sessionService.appendAssistantMessage(sessionId, assistantBuffer.toString(), model);
+                                }
                             })
                             .onErrorResume(e -> {
                                 log.error("Error during chat stream: {}", e.getMessage());
@@ -412,6 +430,26 @@ public class ChatController {
                   .replace("\n", "\\n")
                   .replace("\r", "\\r")
                   .replace("\t", "\\t");
+    }
+
+    private Flux<String> completeChatResponse(String sessionId, String model, String response) {
+        sessionService.appendAssistantMessage(sessionId, response, model);
+        return Flux.just("{\"response\": \"" + escapeJson(response)
+                + "\", \"done\": true, \"session_id\": \"" + sessionId + "\"}");
+    }
+
+    private static void appendOllamaChunk(StringBuilder buffer, String chunk) {
+        if (chunk == null || chunk.isBlank()) return;
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            Map<?, ?> parsed = mapper.readValue(chunk, Map.class);
+            Object token = parsed.get("response");
+            if (token != null) {
+                buffer.append(token.toString());
+            }
+        } catch (Exception ignored) {
+            // Non-JSON chunks are forwarded to the client unchanged; ignore for persistence.
+        }
     }
 
     @PostMapping(value = "/voice/start", produces = MediaType.APPLICATION_JSON_VALUE)

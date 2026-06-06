@@ -26,6 +26,8 @@ import structlog
 from pathlib import Path
 from typing import Optional
 
+from database.sqlite_store import init_schema, load_apps_map, migrate_apps_json, upsert_apps, log_system_event
+
 logger = structlog.get_logger()
 
 # ── Compiled regex (module-load time) ────────────────────────────────────
@@ -120,6 +122,7 @@ class ActionHandler:
         self._apps_db: dict[str, str] = {}          # normalised_name → launch_path
         self._sorted_names: list[str] = []           # kept sorted for bisect
         self._db_path: Path = Path(__file__).resolve().parent.parent / "apps_db.json"
+        init_schema()
         self._load_db()
 
     # ------------------------------------------------------------------
@@ -127,28 +130,40 @@ class ActionHandler:
     # ------------------------------------------------------------------
 
     def _load_db(self) -> None:
-        """Load the cached app database from disk (if present)."""
-        if not self._db_path.is_file():
+        """Load app registry from SQLite, migrating legacy JSON if needed."""
+        sqlite_apps = load_apps_map()
+        if sqlite_apps:
+            self._apps_db = sqlite_apps
+            self._sorted_names = sorted(self._apps_db.keys())
+            logger.info("Loaded app DB from SQLite", count=len(self._apps_db))
             return
-        try:
-            with open(self._db_path, "r", encoding="utf-8") as fh:
-                data = json.load(fh)
-            if isinstance(data, dict):
-                self._apps_db = data
-                self._sorted_names = sorted(self._apps_db.keys())
-                logger.info("Loaded app DB from disk", count=len(self._apps_db))
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("Could not load app DB", error=str(exc))
+
+        if self._db_path.is_file():
+            try:
+                with open(self._db_path, "r", encoding="utf-8") as fh:
+                    data = json.load(fh)
+                if isinstance(data, dict) and data:
+                    self._apps_db = data
+                    self._sorted_names = sorted(self._apps_db.keys())
+                    migrate_apps_json(self._db_path)
+                    logger.info("Loaded app DB from JSON and migrated to SQLite", count=len(self._apps_db))
+            except (json.JSONDecodeError, OSError) as exc:
+                logger.warning("Could not load app DB", error=str(exc))
 
     def _save_db(self) -> None:
-        """Atomically persist the app database to JSON."""
-        tmp_path = self._db_path.with_suffix(".tmp")
+        """Persist app registry to SQLite."""
         try:
-            with open(tmp_path, "w", encoding="utf-8") as fh:
-                json.dump(self._apps_db, fh, indent=2, ensure_ascii=False)
-            tmp_path.replace(self._db_path)
-        except OSError as exc:
-            logger.error("Failed to save app DB", error=str(exc))
+            upsert_apps(self._apps_db)
+            log_system_event("application_registry_updated", event_data=f"count={len(self._apps_db)}")
+        except Exception as exc:
+            logger.error("Failed to save app DB to SQLite", error=str(exc))
+            tmp_path = self._db_path.with_suffix(".tmp")
+            try:
+                with open(tmp_path, "w", encoding="utf-8") as fh:
+                    json.dump(self._apps_db, fh, indent=2, ensure_ascii=False)
+                tmp_path.replace(self._db_path)
+            except OSError as json_exc:
+                logger.error("Failed to save app DB fallback JSON", error=str(json_exc))
 
     # ------------------------------------------------------------------
     # Scanning — Win32 shortcuts

@@ -8,7 +8,7 @@ import 'widgets/chat_timeline.dart';
 import 'widgets/command_input_bar.dart';
 import 'widgets/prompt_chips.dart';
 import 'widgets/memory_panel.dart';
-import 'widgets/live_feed_panel.dart';
+import 'widgets/sessions_panel.dart';
 
 import '../../core/services/system_metrics_service.dart';
 
@@ -43,6 +43,7 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void initState() {
     super.initState();
+    chatService.initialize();
 
     _modelStatusSub = liveFeedService.modelStatus.listen((status) {
       if (mounted && status == 'Ready ✓' && !_hasGreeted) {
@@ -224,9 +225,13 @@ class _DashboardPageState extends State<DashboardPage> {
               alignment: Alignment.topLeft,
               child: SizedBox(
                 width: _isSessionsHidden ? 60 : targetWidth,
-                child: LiveFeedPanel(
+                child: SessionsPanel(
                   isHidden: _isSessionsHidden,
                   onToggle: () => setState(() => _isSessionsHidden = !_isSessionsHidden),
+                  onSessionSelected: (sessionId) async {
+                    await chatService.loadSession(sessionId);
+                    if (mounted) setState(() {});
+                  },
                 ),
               ),
             ),
